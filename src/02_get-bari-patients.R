@@ -22,7 +22,9 @@ bari_pie <- concat_encounters(bari_pts$pie.id)
 #   * DRG
 #   * Identifiers
 #   * Location History
-#   * Medications
+#   * Medications - Inpatient Continuous - All
+#   * Medications - Inpatient Intermittent - All
+#   * Surgery Times
 #   * Visit Data
 
 bari_id <- read_data("data/raw", "id_eras") %>%
@@ -50,3 +52,25 @@ bari_revisit <- distinct(bari_encounters, person.id, .keep_all = TRUE)
 bari_locations <- read_data("data/raw", "locations") %>%
     as.locations() %>%
     tidy_data()
+
+bari_surg_times <- read_data("data/raw", "surgery-times") %>%
+    rename(pie.id = `PowerInsight Encounter Id`,
+           surgery_start = `Start Date/Time`,
+           surgery_stop = `Stop Date/Time`,
+           room_in = `Patient In Room Date/Time`,
+           room_out = `Patient Out Room Date/Time`,
+           recovery_in = `Patient In Recovery Date/Time`,
+           recovery_out = `Patient Out Recovery Date/Time`) %>%
+    distinct() %>%
+    filter(!is.na(surgery_start))
+
+bari_visit <- read_data("data/raw", "visit") %>%
+    as.visits()
+# remove those that aren't preadmit?
+
+bari_floor <- bari_locations %>%
+    left_join(bari_surg_times, by = "pie.id") %>%
+    filter(location == "Jones 9 Bariatric/General Surgery",
+           unit.count == 2) %>%
+    mutate(recovery_duration = difftime(arrive.datetime, room_out, units = "min")) %>%
+    filter(recovery_duration > 0)
