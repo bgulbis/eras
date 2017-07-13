@@ -47,7 +47,16 @@ bari_encounters <- read_data("data/raw", "encounters") %>%
     filter(revisit_days > 0,
            revisit_days <= 30)
 
-bari_revisit <- distinct(bari_encounters, person.id, .keep_all = TRUE)
+# bari_revisit <- distinct(bari_encounters, person.id, .keep_all = TRUE)
+
+bari_revisit_pie <- concat_encounters(bari_encounters$pie.id)
+
+# run EDW query:
+#   * Visit Data
+bari_revisit <- read_data("data/raw", "revisit") %>%
+    as.visits()
+
+
 
 bari_locations <- read_data("data/raw", "locations") %>%
     as.locations() %>%
@@ -74,3 +83,25 @@ bari_floor <- bari_locations %>%
            unit.count == 2) %>%
     mutate(recovery_duration = difftime(arrive.datetime, room_out, units = "min")) %>%
     filter(recovery_duration > 0)
+
+bari_readmit <- bari_visit %>%
+    inner_join(bari_revisit, by = "pie.id")
+
+# pain meds --------------------------------------------
+
+opiods <- tibble(name = c("narcotic analgesics", "narcotic analgesic combinations"),
+                 type = "class",
+                 group = "sched")
+
+cont_opiods <- tibble(name = c("fentanyl", "morphine", "hydromorphone", "mepiridine", "remifentanyl", "sufentanyl"),
+                      type = "med",
+                      group = "cont")
+
+meds_sched <- read_data("data/raw", "meds-sched") %>%
+    as.meds_sched()
+
+meds_cont <- read_data("data/raw", "meds-cont") %>%
+    as.meds_cont() %>%
+    tidy_data(cont_opiods, meds_sched)
+
+meds_pain <- tidy_data(meds_sched, opiods)

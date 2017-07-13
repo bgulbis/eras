@@ -50,6 +50,8 @@ bari_proc_desc <- left_join(bari_proc, proc_desc, by = "proc.code")
 
 # probably bari procedure codes: 0DB64Z3, 0DB64ZZ, 0D164ZA
 
+# edw patient list -------------------------------------
+
 # run EDW:
 #   * Patients - by Procedure Code
 #       - Procedure Code: 0DB64Z3;0DB64ZZ;0D164ZA
