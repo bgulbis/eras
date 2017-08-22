@@ -15,9 +15,6 @@ write_rds(bari_pts, "data/tidy/bari_pts.Rds", "gz")
 bari_pie <- concat_encounters(bari_pts$pie.id)
 
 # run EDW queries:
-#   * Clinical Events
-#       - Clinical Event: Pain Intensity NRS (0-10); Pain Intensity; Primary
-#       Pain Intensity; Pain Intensity General; Pain Intensity Secondary
 #   * Demographics
 #   * DRG
 #   * Identifiers
@@ -29,6 +26,12 @@ bari_pie <- concat_encounters(bari_pts$pie.id)
 
 bari_id <- read_data("data/raw", "id_eras") %>%
     as.id()
+
+bari_mbo <- concat_encounters(bari_id$millennium.id)
+
+# run MBO query:
+#   * Pain PCA Pump
+#   * Pain Scores
 
 bari_person <- concat_encounters(bari_id$person.id)
 
@@ -55,8 +58,6 @@ bari_revisit_pie <- concat_encounters(bari_encounters$pie.id)
 #   * Visit Data
 bari_revisit <- read_data("data/raw", "revisit") %>%
     as.visits()
-
-
 
 bari_locations <- read_data("data/raw", "locations") %>%
     as.locations() %>%
@@ -105,3 +106,16 @@ meds_cont <- read_data("data/raw", "meds-cont") %>%
     tidy_data(cont_opiods, meds_sched)
 
 meds_pain <- tidy_data(meds_sched, opiods)
+
+meds_pain_cont <- meds_cont %>%
+    calc_runtime() %>%
+    summarize_data()
+
+# pain scores ------------------------------------------
+
+pain_scores <- read_data("data/raw", "pain-scores", FALSE) %>%
+    as.pain_scores()
+
+pain_pca <- read_data("data/raw", "pain-pca", FALSE) %>%
+    as.pain_scores()
+
