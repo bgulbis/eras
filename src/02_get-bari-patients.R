@@ -1,5 +1,6 @@
 library(tidyverse)
 library(readxl)
+library(lubridate)
 library(edwr)
 
 # run EDW:
@@ -38,9 +39,12 @@ bari_person <- concat_encounters(bari_id$person.id)
 # run EDW query:
 #   * Encounters - by Person ID
 
+# revisits ---------------------------------------------
+
+# exclude bedded outpatient (probably planned)
 bari_encounters <- read_data("data/raw", "encounters") %>%
     as.encounters() %>%
-    filter(visit.type %in% c("Inpatient", "Emergency", "Bedded Outpatient", "Observation")) %>%
+    filter(visit.type %in% c("Inpatient", "Emergency", "Observation")) %>%
     group_by(person.id) %>%
     arrange(admit.datetime, .by_group = TRUE) %>%
     left_join(bari_pts[c("pie.id", "discharge.datetime")], by = "pie.id") %>%
@@ -56,12 +60,23 @@ bari_revisit_pie <- concat_encounters(bari_encounters$pie.id)
 
 # run EDW query:
 #   * Visit Data
+
+# revisit admit type and source
 bari_revisit <- read_data("data/raw", "revisit") %>%
-    as.visits()
+    as.visits() %>%
+    semi_join(bari_encounters, by = "pie.id")
+
+# remove those that aren't preadmit
+bari_visit <- read_data("data/raw", "^visit") %>%
+    as.visits() %>%
+    filter(admit.type == "Preadmit Not OB")
+
+# surgery times ----------------------------------------
 
 bari_locations <- read_data("data/raw", "locations") %>%
     as.locations() %>%
-    tidy_data()
+    tidy_data() %>%
+    semi_join(bari_visit, by = "pie.id")
 
 bari_surg_times <- read_data("data/raw", "surgery-times") %>%
     rename(pie.id = `PowerInsight Encounter Id`,
@@ -72,21 +87,26 @@ bari_surg_times <- read_data("data/raw", "surgery-times") %>%
            recovery_in = `Patient In Recovery Date/Time`,
            recovery_out = `Patient Out Recovery Date/Time`) %>%
     distinct() %>%
-    filter(!is.na(surgery_start))
-
-bari_visit <- read_data("data/raw", "visit") %>%
-    as.visits()
-# remove those that aren't preadmit?
+    semi_join(bari_visit, by = "pie.id") %>%
+    filter(!is.na(surgery_start)) %>%
+    mutate_at(c("surgery_start", "surgery_stop", "room_in", "room_out"),
+              ymd_hms, tz = "US/Central") %>%
+    arrange(pie.id, surgery_start) %>%
+    add_count(pie.id)
 
 bari_floor <- bari_locations %>%
+    semi_join(bari_visit, by = "pie.id") %>%
     left_join(bari_surg_times, by = "pie.id") %>%
-    filter(location == "Jones 9 Bariatric/General Surgery",
-           unit.count == 2) %>%
+    filter(!is.na(location)) %>%
     mutate(recovery_duration = difftime(arrive.datetime, room_out, units = "min")) %>%
-    filter(recovery_duration > 0)
+    filter(recovery_duration > 0) %>%
+    group_by(pie.id) %>%
+    arrange(recovery_duration, .by_group = TRUE) %>%
+    distinct(pie.id, .keep_all = TRUE) %>%
+    filter(location == "Jones 9 Bariatric/General Surgery")
 
-bari_readmit <- bari_visit %>%
-    inner_join(bari_revisit, by = "pie.id")
+# bari_readmit <- bari_visit %>%
+#     inner_join(bari_revisit, by = "pie.id")
 
 # pain meds --------------------------------------------
 
@@ -105,7 +125,22 @@ meds_cont <- read_data("data/raw", "meds-cont") %>%
     as.meds_cont() %>%
     tidy_data(cont_opiods, meds_sched)
 
-meds_pain <- tidy_data(meds_sched, opiods)
+meds_pain <- tidy_data(meds_sched, opiods) %>%
+    left_join(bari_floor[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
+    mutate(timing = case_when(med.datetime < room_out ~ "or",
+                              med.datetime < arrive.datetime ~ "pacu",
+                              TRUE ~ "floor"))
+
+    filter(med.datetime >= room_out,
+           med.datetime <= arrive.datetime)
+
+meds_pain_floor <- meds_pain %>%
+    left_join(bari_floor[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
+    filter(med.datetime > arrive.datetime)
+
+meds_pain_or <- meds_pain %>%
+    left_join(bari_floor[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
+    filter(med.datetime < room_out)
 
 meds_pain_cont <- meds_cont %>%
     calc_runtime() %>%
