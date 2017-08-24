@@ -156,9 +156,28 @@ meds_pain_cont <- meds_cont %>%
 
 pain_scores <- read_data(dir_raw, "pain-scores", FALSE) %>%
     as.pain_scores() %>%
-    semi_join(bari_id, by = "millennium.id")
+    semi_join(bari_id, by = "millennium.id") %>%
+    inner_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
+    left_join(data_patients, by = "pie.id")
 
+pain_prior <- pain_scores %>%
+    filter(order.id == "0",
+           event.datetime > surgery_start) %>%
+    mutate(time_surg = difftime(event.datetime, surgery_stop, units = "hours"))
 
+pain_avg <- pain_prior %>%
+    filter(time_surg <= 24) %>%
+    rename(vital.datetime = event.datetime,
+           vital = event,
+           vital.result = event.result) %>%
+    mutate_at("vital.result", as.numeric)
+
+class(pain_avg) <- append(class(pain_avg), c("vitals", "tbl_edwr"), after = 0L)
+attr(pain_avg, "data") <- "mbo"
+
+data_pain_scores <- pain_avg %>%
+    calc_runtime() %>%
+    summarize_data()
 
 # pca --------------------------------------------------
 pca_actions <- c("pca continuous rate dose" = "pca_rate",
