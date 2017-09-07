@@ -126,8 +126,8 @@ data_revisit <- read_data(dir_raw, "revisit") %>%
 
 # pain meds --------------------------------------------
 
-opiods <- tibble(name = c("narcotic analgesics", "narcotic analgesic combinations"),
-                 type = "class",
+opiods <- tibble(name = c("narcotic analgesics", "narcotic analgesic combinations", "acetaminophen"),
+                 type = c(rep("class", 2), "med"),
                  group = "sched")
 
 cont_opiods <- tibble(name = c("fentanyl", "morphine", "hydromorphone", "mepiridine", "remifentanyl", "sufentanyl"),
@@ -137,20 +137,30 @@ cont_opiods <- tibble(name = c("fentanyl", "morphine", "hydromorphone", "mepirid
 meds_sched <- read_data(dir_raw, "meds-sched") %>%
     as.meds_sched()
 
-meds_cont <- read_data(dir_raw, "meds-cont") %>%
-    as.meds_cont() %>%
-    tidy_data(cont_opiods, meds_sched)
-
 meds_pain <- tidy_data(meds_sched, opiods) %>%
     inner_join(data_patients[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
     mutate(timing = case_when(med.datetime < room_out ~ "or",
                               med.datetime < arrive.datetime ~ "pacu",
                               TRUE ~ "floor"))
 
-meds_pain_cont <- meds_cont %>%
-    calc_runtime() %>%
-    summarize_data() %>%
-    semi_join(data_patients, by = "pie.id")
+data_pain_meds <- meds_pain %>%
+    mutate(postop_day = difftime(floor_date(med.datetime, "day"),
+                                 floor_date(room_out, "day"),
+                                 units = "days")) %>%
+    group_by(pie.id, postop_day, med, med.dose.units, route) %>%
+    summarize_at("med.dose", sum, na.rm = TRUE) %>%
+    arrange(pie.id, postop_day, med)
+
+# seems like these are all PCA
+
+# meds_cont <- read_data(dir_raw, "meds-cont") %>%
+#     as.meds_cont() %>%
+#     tidy_data(cont_opiods, meds_sched)
+#
+# meds_pain_cont <- meds_cont %>%
+#     calc_runtime() %>%
+#     summarize_data() %>%
+#     semi_join(data_patients, by = "pie.id")
 
 # pain scores ------------------------------------------
 
