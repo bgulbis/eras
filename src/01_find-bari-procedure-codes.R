@@ -2,7 +2,9 @@ library(tidyverse)
 library(readxl)
 library(edwr)
 
-surgeries <- read_data("data/raw", "patients-surgeon") %>%
+dir_raw <- "data/raw/bari"
+
+surgeries <- read_data(dir_raw, "patients-surgeon") %>%
     distinct() %>%
     # filter(`Primary Procedure Indicator` == "1") %>%
     arrange(`Primary Surgeon`, `Procedure Start Date/Time`)
@@ -14,7 +16,7 @@ bari_fin <- concat_encounters(bari$fin)
 # run EDW:
 #   * Identifiers
 
-bari_id <- read_data("data/raw", "identifiers") %>%
+bari_id <- read_data(dir_raw, "identifiers") %>%
     as.id()
 
 bari_pie <- concat_encounters(bari_id$pie.id)
@@ -22,7 +24,7 @@ bari_pie <- concat_encounters(bari_id$pie.id)
 # run EDW:
 #   * Procedures (ICD-9-CM/ICD-10-PCS) - All
 
-bari_proc <- read_data("data/raw", "^procedures") %>%
+bari_proc <- read_data(dir_raw, "^procedures") %>%
     as.procedures() %>%
     filter(proc.source == "ICD-10-CM")
 
@@ -34,7 +36,7 @@ proc_codes <- concat_encounters(bari_proc$proc.code)
 # run EDW:
 #   * Lookup - Procedure Descriptions
 
-proc_desc <- read_data("data/raw", "lookup") %>%
+proc_desc <- read_data(dir_raw, "lookup") %>%
     rename(proc.code = `Procedure Code`,
            proc.desc = `Procedure Code Description`) %>%
     distinct() %>%
@@ -57,7 +59,7 @@ bari_proc_desc <- left_join(bari_proc, proc_desc, by = "proc.code")
 #       - Procedure Code: 0DB64Z3;0DB64ZZ;0D164ZA
 #       - Admit date: 1/1/2016 - 7/1/2016
 
-bari_pts <- read_data("data/raw", "patients_eras-bari") %>%
+bari_pts <- read_data(dir_raw, "patients_eras-bari") %>%
     as.patients()
 
 write_rds(bari_pts, "data/tidy/bari_pts.Rds", "gz")
@@ -75,7 +77,7 @@ bari_pie <- concat_encounters(bari_pts$pie.id)
 #   * Medications
 #   * Visit Data
 
-bari_id2 <- read_data("data/raw", "id_eras") %>%
+bari_id2 <- read_data(dir_raw, "id_eras") %>%
     as.id()
 
 #   * Encounters
