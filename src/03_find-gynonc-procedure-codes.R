@@ -4,10 +4,10 @@ library(edwr)
 
 dir_raw <- "data/raw/gynonc"
 
-surgeries <- read_data(dir_raw, "patients-surgeon") %>%
-    distinct() %>%
-    # filter(`Primary Procedure Indicator` == "1") %>%
-    arrange(`Primary Surgeon`, `Procedure Start Date/Time`)
+# surgeries <- read_data(dir_raw, "patients-surgeon") %>%
+#     distinct() %>%
+#     filter(`Primary Procedure Indicator` == "1") %>%
+#     arrange(`Primary Surgeon`, `Procedure Start Date/Time`)
 
 gynonc <- read_excel("data/external/exploratory-patient-list_gynonc.xlsx", col_types = "text")
 
@@ -45,10 +45,20 @@ proc_desc <- read_data(dir_raw, "lookup") %>%
 
 gynonc_proc_desc <- left_join(gynonc_proc, proc_desc, by = "proc.code")
 
-# x <- filter(gynonc_proc, (proc.code == "0DB64Z3" | proc.code == "0D164ZA")) %>%
+# x <- filter(gynonc_proc, proc.code %in% c("0UT90ZZ", "0UTC0ZZ", "0UT70ZZ",
+#                                           "0UT20ZZ", "0DBS0ZX", "0DBS0ZZ",
+#                                           "0UT00ZZ", "0UT10ZZ", "0UT60ZZ",
+#                                           "0UT50ZZ", "0UB20ZZ", "0UDB8ZZ",
+#                                           "0UB98ZZ", "0UBM0ZZ", "0UT54ZZ",
+#                                           "0UB04ZZ", "0DBW0ZX")) %>%
 #     distinct(pie.id)
 #
+# y <- anti_join(gynonc_id, gynonc_proc, by = "pie.id")
+#
+# proc_mid <- concat_encounters(y$millennium.id)
+
 # y <- anti_join(gynonc_proc_desc, x, by = "pie.id")
+# z <- distinct(gynonc_proc, pie.id)
 
 # probably gynonc procedure codes: 0DB64Z3, 0DB64ZZ, 0D164ZA
 
@@ -56,7 +66,8 @@ gynonc_proc_desc <- left_join(gynonc_proc, proc_desc, by = "proc.code")
 
 # run EDW:
 #   * Patients - by Procedure Code
-#       - Procedure Code: 0DB64Z3;0DB64ZZ;0D164ZA
+#       - Procedure Code: 0UT90ZZ;0UTC0ZZ;0UT70ZZ;0UT20ZZ;0DBS0ZX;0DBS0ZZ;0UT00ZZ;0UT10ZZ;0UT60ZZ;0UT50ZZ;0UB20ZZ;0UDB8ZZ;0UB98ZZ;0UBM0ZZ;0UT54ZZ;0UB04ZZ;0DBW0ZX
+#       - Physician- Procedure: LucciIII, Joseph Anthony MD;Nugent, Elizabeth Kathleen MD
 #       - Admit date: 1/1/2016 - 7/1/2016
 
 gynonc_pts <- read_data(dir_raw, "patients_eras-gynonc") %>%
