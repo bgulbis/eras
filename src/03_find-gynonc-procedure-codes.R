@@ -1,6 +1,7 @@
 library(tidyverse)
 library(readxl)
 library(edwr)
+library(lubridate)
 
 dir_raw <- "data/raw/gynonc"
 
@@ -67,15 +68,30 @@ gynonc_proc_desc <- left_join(gynonc_proc, proc_desc, by = "proc.code")
 # run EDW:
 #   * Patients - by Procedure Code
 #       - Procedure Code: 0UT90ZZ;0UTC0ZZ;0UT70ZZ;0UT20ZZ;0DBS0ZX;0DBS0ZZ;0UT00ZZ;0UT10ZZ;0UT60ZZ;0UT50ZZ;0UB20ZZ;0UDB8ZZ;0UB98ZZ;0UBM0ZZ;0UT54ZZ;0UB04ZZ;0DBW0ZX
-#       - Physician- Procedure: LucciIII, Joseph Anthony MD;Nugent, Elizabeth Kathleen MD
 #       - Admit date: 1/1/2016 - 7/1/2016
 
 gynonc_pts <- read_data(dir_raw, "patients_eras-gynonc") %>%
     as.patients()
 
+gynonc_pie <- concat_encounters(gynonc_pts$pie.id)
+
+# run EDW query:
+#   * Surgeon - by Patient
+
+gynonc_surgeon <- read_data(dir_raw, "surgeon") %>%
+    distinct() %>%
+    rename(pie.id = `PowerInsight Encounter Id`,
+           start.datetime = `Start Date/Time`,
+           surgeon = `Primary Surgeon`) %>%
+    mutate_at("start.datetime", ymd_hms, tz = "US/Central") %>%
+    filter(surgeon %in% c("Nugent, Elizabeth Kathleen MD",
+                          "LucciIII, Joseph Anthony MD"))
+
+gynonc_pts <- semi_join(gynonc_pts, gynonc_surgeon, by = "pie.id")
+
 write_rds(gynonc_pts, "data/tidy/gynonc_pts.Rds", "gz")
 
-gynonc_pie <- concat_encounters(gynonc_pts$pie.id)
+# gynonc_pie <- concat_encounters(gynonc_pts$pie.id)
 
 # run EDW queries:
 #   * Clinical Events
@@ -85,11 +101,11 @@ gynonc_pie <- concat_encounters(gynonc_pts$pie.id)
 #   * DRG
 #   * Identifiers
 #   * Location History
-#   * Medications
+#   * Medications - Inpatient Continuous - All
 #   * Visit Data
 
-gynonc_id2 <- read_data(dir_raw, "id_eras") %>%
-    as.id()
+# gynonc_id2 <- read_data(dir_raw, "id_eras") %>%
+#     as.id()
 
 #   * Encounters
 
