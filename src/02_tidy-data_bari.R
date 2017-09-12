@@ -126,11 +126,18 @@ data_revisit <- read_data(dir_raw, "revisit") %>%
 
 # pain meds --------------------------------------------
 
-opiods <- tibble(name = c("narcotic analgesics", "narcotic analgesic combinations", "acetaminophen"),
+opiods <- tibble(name = c("narcotic analgesics",
+                          "narcotic analgesic combinations",
+                          "acetaminophen"),
                  type = c(rep("class", 2), "med"),
                  group = "sched")
 
-cont_opiods <- tibble(name = c("fentanyl", "morphine", "hydromorphone", "mepiridine", "remifentanyl", "sufentanyl"),
+cont_opiods <- tibble(name = c("fentanyl",
+                               "morphine",
+                               "hydromorphone",
+                               "mepiridine",
+                               "remifentanyl",
+                               "sufentanyl"),
                       type = "med",
                       group = "cont")
 
@@ -205,7 +212,12 @@ pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
     select(pie.id, millennium.id:event.result) %>%
     mutate_at("event", str_replace_all, pattern = pca_actions) %>%
     spread(event, event.result) %>%
-    mutate_at(c("pca_demands", "pca_dose", "pca_delivered", "pca_load", "pca_lockout", "pca_rate"),
+    mutate_at(c("pca_demands",
+                "pca_dose",
+                "pca_delivered",
+                "pca_load",
+                "pca_lockout",
+                "pca_rate"),
               as.numeric) %>%
     left_join(data_patients[c("pie.id", "room_out", "depart.datetime")], by = "pie.id") %>%
     group_by(pie.id, event.datetime) %>%
@@ -216,4 +228,7 @@ pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
 
 data_pca <- pain_pca %>%
     group_by(pie.id, postop_day, pca_drug) %>%
-    summarize_at(c("pca_demands", "pca_delivered", "total_dose"), sum, na.rm = TRUE)
+    summarize_at(c("pca_demands",
+                   "pca_delivered",
+                   "total_dose"),
+                 sum, na.rm = TRUE)
