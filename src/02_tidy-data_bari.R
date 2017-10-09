@@ -4,12 +4,14 @@ library(lubridate)
 library(stringr)
 library(edwr)
 
-dir_raw <- "data/raw"
+dir_raw <- "data/raw/bari"
 
 # run EDW:
 #   * Patients - by Procedure Code
 #       - Procedure Code: 0DB64Z3;0DB64ZZ;0D164ZA
 #       - Admit date: 1/1/2016 - 7/1/2016
+
+# current data: 1/1/2017 - 7/1/2017
 
 bari_pts <- read_data(dir_raw, "patients_eras-bari") %>%
     as.patients()
@@ -55,14 +57,15 @@ bari_locations <- read_data(dir_raw, "locations") %>%
     semi_join(bari_visit, by = "pie.id")
 
 bari_surg_times <- read_data(dir_raw, "surgery-times") %>%
-    rename(pie.id = `PowerInsight Encounter Id`,
-           surgery_start = `Start Date/Time`,
-           surgery_stop = `Stop Date/Time`,
-           room_in = `Patient In Room Date/Time`,
-           room_out = `Patient Out Room Date/Time`,
-           recovery_in = `Patient In Recovery Date/Time`,
-           recovery_out = `Patient Out Recovery Date/Time`) %>%
-    distinct() %>%
+    # rename(pie.id = `PowerInsight Encounter Id`,
+    #        surgery_start = `Start Date/Time`,
+    #        surgery_stop = `Stop Date/Time`,
+    #        room_in = `Patient In Room Date/Time`,
+    #        room_out = `Patient Out Room Date/Time`,
+    #        recovery_in = `Patient In Recovery Date/Time`,
+    #        recovery_out = `Patient Out Recovery Date/Time`) %>%
+    # distinct() %>%
+    as.surgery_times() %>%
     semi_join(bari_visit, by = "pie.id") %>%
     filter(!is.na(surgery_start)) %>%
     mutate_at(c("surgery_start", "surgery_stop", "room_in", "room_out"),
@@ -70,21 +73,38 @@ bari_surg_times <- read_data(dir_raw, "surgery-times") %>%
     arrange(pie.id, surgery_start) %>%
     add_count(pie.id)
 
+# bari_floor <- bari_locations %>%
+#     semi_join(bari_visit, by = "pie.id") %>%
+#     left_join(bari_surg_times, by = "pie.id") %>%
+#     filter(!is.na(location)) %>%
+#     mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
+#            or_hours = difftime(room_out, room_in, units = "hours")) %>%
+#     filter(pacu_hours > 0) %>%
+#     group_by(pie.id) %>%
+#     arrange(pacu_hours, .by_group = TRUE) %>%
+#     distinct(pie.id, .keep_all = TRUE) %>%
+#     filter(location == "Jones 9 Bariatric/General Surgery")
+
 bari_floor <- bari_locations %>%
     semi_join(bari_visit, by = "pie.id") %>%
     left_join(bari_surg_times, by = "pie.id") %>%
-    filter(!is.na(location)) %>%
-    mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
-           or_hours = difftime(room_out, room_in, units = "hours")) %>%
-    filter(pacu_hours > 0) %>%
+    left_join(bari_visit[c("pie.id", "admit.datetime", "discharge.datetime")], by = "pie.id") %>%
     group_by(pie.id) %>%
-    arrange(pacu_hours, .by_group = TRUE) %>%
+    filter(arrive.datetime > surgery_stop,
+           location != "Hermann 1 Virtual Emergency Dept") %>%
+    arrange(arrive.datetime, .by_group = TRUE) %>%
     distinct(pie.id, .keep_all = TRUE) %>%
-    filter(location == "Jones 9 Bariatric/General Surgery")
+    filter(location == "Jones 9 Bariatric/General Surgery") %>%
+    mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
+           or_hours = difftime(room_out, room_in, units = "hours"),
+           preop_los = difftime(surgery_start, admit.datetime, units = "days"),
+           postop_los = difftime(discharge.datetime, surgery_stop, units = "days")) %>%
+    filter(pacu_hours > 0)
 
 data_patients <- bari_floor %>%
     select(pie.id, or_hours, pacu_hours, arrive.datetime:room_out) %>%
-    rename(floor_days = unit.length.stay)
+    rename(floor_days = unit.length.stay) %>%
+    mutate(group = "baseline")
 
 bari_id <- semi_join(bari_id, data_patients, by = "pie.id")
 bari_pts <- semi_join(bari_pts, data_patients, by = "pie.id")
@@ -148,15 +168,24 @@ meds_pain <- tidy_data(meds_sched, opiods) %>%
     inner_join(data_patients[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
     mutate(timing = case_when(med.datetime < room_out ~ "or",
                               med.datetime < arrive.datetime ~ "pacu",
-                              TRUE ~ "floor"))
+                              TRUE ~ "floor"),
+           time_surg = difftime(med.datetime, room_out, units = "hours"))
 
 data_pain_meds <- meds_pain %>%
-    mutate(postop_day = difftime(floor_date(med.datetime, "day"),
-                                 floor_date(room_out, "day"),
-                                 units = "days")) %>%
-    group_by(pie.id, postop_day, med, med.dose.units, route) %>%
+    filter(time_surg < 24) %>%
+    group_by(pie.id, med, med.dose.units, route) %>%
+    # mutate(postop_day = difftime(floor_date(med.datetime, "day"),
+    #                              floor_date(room_out, "day"),
+    #                              units = "days")) %>%
+    # group_by(pie.id, postop_day, med, med.dose.units, route) %>%
     summarize_at("med.dose", sum, na.rm = TRUE) %>%
-    arrange(pie.id, postop_day, med)
+    arrange(pie.id, med)
+
+opiods <- med_lookup(c("narcotic analgesics", "narcotic analgesic combinations")) %>%
+    mutate_at("med.name", str_to_lower)
+
+data_opiods <- data_pain_meds %>%
+    filter(med %in% opiods$med.name)
 
 # seems like these are all PCA
 
@@ -177,9 +206,11 @@ pain_scores <- read_data(dir_raw, "pain-scores", FALSE) %>%
     inner_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
     left_join(data_patients, by = "pie.id")
 
+
 pain_prior <- pain_scores %>%
-    filter(order.id == "0",
-           event.datetime > surgery_start) %>%
+    filter(event.datetime > surgery_start) %>%
+    # filter(order.id == "0",
+    #        event.datetime > surgery_start) %>%
     mutate(time_surg = difftime(event.datetime, surgery_stop, units = "hours"))
 
 pain_avg <- pain_prior %>%
@@ -224,11 +255,20 @@ pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
     mutate(total_dose = sum(pca_delivered * pca_dose, pca_load, na.rm = TRUE),
            postop_day = difftime(floor_date(event.datetime, "day"),
                                  floor_date(room_out, "day"),
-                                 units = "days"))
+                                 units = "days"),
+           time_surg = difftime(event.datetime, room_out, units = "hours"))
 
 data_pca <- pain_pca %>%
-    group_by(pie.id, postop_day, pca_drug) %>%
+    # group_by(pie.id, postop_day, pca_drug) %>%
+    filter(time_surg < 24) %>%
+    group_by(pie.id, pca_drug) %>%
     summarize_at(c("pca_demands",
                    "pca_delivered",
                    "total_dose"),
                  sum, na.rm = TRUE)
+
+# nausea meds ------------------------------------------
+# emesis
+# number prn
+
+dirr::save_rds("data/tidy/bari_baseline", "^data_")
