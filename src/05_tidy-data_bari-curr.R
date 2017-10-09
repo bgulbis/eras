@@ -14,7 +14,7 @@ dir_raw <- "data/raw/bari_curr"
 bari_pts <- read_data(dir_raw, "patients_eras-bari") %>%
     as.patients()
 
-write_rds(bari_pts, "data/tidy/bari_pts.Rds", "gz")
+write_rds(bari_pts, "data/tidy/bari_pts_current.Rds", "gz")
 
 bari_pie <- concat_encounters(bari_pts$pie.id)
 
@@ -47,6 +47,18 @@ bari_person <- concat_encounters(bari_id$person.id)
 bari_visit <- read_data(dir_raw, "^visit") %>%
     as.visits() %>%
     filter(admit.type == "Preadmit Not OB")
+
+bari_surgeon <- read_data(dir_raw, "surgeon") %>%
+    distinct() %>%
+    rename(pie.id = `PowerInsight Encounter Id`,
+           start.datetime = `Start Date/Time`,
+           surgeon = `Primary Surgeon`) %>%
+    mutate_at("start.datetime", ymd_hms, tz = "US/Central") %>%
+    filter(surgeon %in% c("Wilson, Erik Browning MD",
+                          "SnyderSr, Brad Elliot MD",
+                          "Wilson, Todd David MD",
+                          "Mehta, Sheilendra Suresh MD",
+                          "Bajwa, Kulvinder S MD"))
 
 # surgery times ----------------------------------------
 
@@ -103,6 +115,7 @@ bari_floor <- bari_locations %>%
 data_patients <- bari_floor %>%
     select(pie.id, or_hours, pacu_hours, arrive.datetime:room_out) %>%
     rename(floor_days = unit.length.stay) %>%
+    semi_join(bari_surgeon, by = "pie.id") %>%
     mutate(group = "current")
 
 bari_id <- semi_join(bari_id, data_patients, by = "pie.id")
@@ -270,3 +283,5 @@ data_pca <- pain_pca %>%
 # nausea meds ------------------------------------------
 # emesis
 # number prn
+
+dirr::save_rds("data/tidy/bari_current", "^data_")
