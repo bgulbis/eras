@@ -47,14 +47,7 @@ gynonc_locations <- read_data(dir_raw, "locations") %>%
     semi_join(gynonc_visit, by = "pie.id")
 
 gynonc_surg_times <- read_data(dir_raw, "surgery-times") %>%
-    rename(pie.id = `PowerInsight Encounter Id`,
-           surgery_start = `Start Date/Time`,
-           surgery_stop = `Stop Date/Time`,
-           room_in = `Patient In Room Date/Time`,
-           room_out = `Patient Out Room Date/Time`,
-           recovery_in = `Patient In Recovery Date/Time`,
-           recovery_out = `Patient Out Recovery Date/Time`) %>%
-    distinct() %>%
+    as.surgery_times() %>%
     semi_join(gynonc_visit, by = "pie.id") %>%
     filter(!is.na(surgery_start)) %>%
     mutate_at(c("surgery_start", "surgery_stop", "room_in", "room_out"),
@@ -63,20 +56,35 @@ gynonc_surg_times <- read_data(dir_raw, "surgery-times") %>%
     add_count(pie.id)
 
 gynonc_floor <- gynonc_locations %>%
-    semi_join(gynonc_visit, by = "pie.id") %>%
     left_join(gynonc_surg_times, by = "pie.id") %>%
-    filter(!is.na(location)) %>%
-    mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
-           or_hours = difftime(room_out, room_in, units = "hours")) %>%
-    filter(pacu_hours > 0) %>%
+    left_join(gynonc_visit[c("pie.id", "admit.datetime", "discharge.datetime")], by = "pie.id") %>%
     group_by(pie.id) %>%
-    arrange(pacu_hours, .by_group = TRUE) %>%
+    filter(arrive.datetime > surgery_stop,
+           location != "Hermann 1 Virtual Emergency Dept") %>%
+    arrange(arrive.datetime, .by_group = TRUE) %>%
     distinct(pie.id, .keep_all = TRUE) %>%
-    filter(location == "Jones 3 Neuroscience")
+    filter(location == "Jones 3 Neuroscience") %>%
+    mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
+           or_hours = difftime(room_out, room_in, units = "hours"),
+           preop_los = difftime(surgery_start, admit.datetime, units = "days"),
+           postop_los = difftime(discharge.datetime, surgery_stop, units = "days")) %>%
+    filter(pacu_hours > 0)
+
+# gynonc_floor <- gynonc_locations %>%
+#     semi_join(gynonc_visit, by = "pie.id") %>%
+#     left_join(gynonc_surg_times, by = "pie.id") %>%
+#     filter(!is.na(location)) %>%
+#     mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
+#            or_hours = difftime(room_out, room_in, units = "hours")) %>%
+#     filter(pacu_hours > 0) %>%
+#     group_by(pie.id) %>%
+#     arrange(pacu_hours, .by_group = TRUE) %>%
+#     distinct(pie.id, .keep_all = TRUE) %>%
+#     filter(location == "Jones 3 Neuroscience")
 
 data_patients <- gynonc_floor %>%
-    select(pie.id, or_hours, pacu_hours, arrive.datetime:room_out) %>%
-    rename(floor_days = unit.length.stay)
+    select(pie.id, preop_los, postop_los, or_hours, pacu_hours,
+           floor_days = unit.length.stay)
 
 gynonc_id <- semi_join(gynonc_id, data_patients, by = "pie.id")
 gynonc_pts <- semi_join(gynonc_pts, data_patients, by = "pie.id")
@@ -85,8 +93,8 @@ gynonc_pts <- semi_join(gynonc_pts, data_patients, by = "pie.id")
 
 data_demographics <- read_data(dir_raw, "demographics") %>%
     as.demographics() %>%
-    semi_join(data_patients, by = "pie.id")
-
+    semi_join(data_patients, by = "pie.id") %>%
+    left_join(gynonc_visit[c("pie.id", "admit.source", "admit.type")], by = "pie.id")
 
 # revisits ---------------------------------------------
 
@@ -137,7 +145,8 @@ meds_sched <- read_data(dir_raw, "meds-sched") %>%
     as.meds_sched()
 
 meds_pain <- tidy_data(meds_sched, opiods) %>%
-    inner_join(data_patients[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
+    semi_join(data_patients, by = "pie.id") %>%
+    inner_join(gynonc_floor[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
     mutate(timing = case_when(med.datetime < room_out ~ "or",
                               med.datetime < arrive.datetime ~ "pacu",
                               TRUE ~ "floor"))
@@ -167,24 +176,33 @@ pain_scores <- read_data(dir_raw, "pain-scores", FALSE) %>%
     as.pain_scores() %>%
     semi_join(gynonc_id, by = "millennium.id") %>%
     inner_join(gynonc_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
-    left_join(data_patients, by = "pie.id")
+    left_join(gynonc_floor, by = "pie.id") %>%
+    filter(event.datetime > surgery_start) %>%
+    mutate(time_surg = difftime(event.datetime, surgery_stop, units = "hours"),
+           time_surg_group = case_when(time_surg <= 6 ~ "6hr",
+                                       time_surg <= 12 ~ "12hr",
+                                       time_surg <= 24 ~ "24hr",
+                                       TRUE ~ "gt24hr"),
+           prior_med = order.id == "0")
 
-pain_prior <- pain_scores %>%
-    filter(order.id == "0",
-           event.datetime > surgery_start) %>%
-    mutate(time_surg = difftime(event.datetime, surgery_stop, units = "hours"))
-
-pain_avg <- pain_prior %>%
+pain_avg <- pain_scores %>%
     filter(time_surg <= 24) %>%
     rename(vital.datetime = event.datetime,
            vital = event,
            vital.result = event.result) %>%
     mutate_at("vital.result", as.numeric)
 
-class(pain_avg) <- append(class(pain_avg), c("vitals", "tbl_edwr"), after = 0L)
-attr(pain_avg, "data") <- "mbo"
+pain_avg_group <- group_by(pain_avg, time_surg_group)
 
-data_pain_scores <- pain_avg %>%
+class(pain_avg_group) <- append(class(pain_avg), c("vitals", "tbl_edwr"), after = 0L)
+attr(pain_avg_group, "data") <- "mbo"
+
+data_pain_scores_group <- pain_avg_group %>%
+    calc_runtime() %>%
+    summarize_data()
+
+data_pain_scores_pre <- pain_avg %>%
+    group_by(prior_med) %>%
     calc_runtime() %>%
     summarize_data()
 
@@ -211,7 +229,7 @@ pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
                 "pca_lockout",
                 "pca_rate"),
               as.numeric) %>%
-    left_join(data_patients[c("pie.id", "room_out", "depart.datetime")], by = "pie.id") %>%
+    left_join(gynonc_floor[c("pie.id", "room_out", "depart.datetime")], by = "pie.id") %>%
     group_by(pie.id, event.datetime) %>%
     mutate(total_dose = sum(pca_delivered * pca_dose, pca_load, na.rm = TRUE),
            postop_day = difftime(floor_date(event.datetime, "day"),
