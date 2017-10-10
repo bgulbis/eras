@@ -50,52 +50,90 @@ include <- select(data_patients, pie.id, group)
 ```
 
 ```{r}
-hdr <- htmltools::withTags(table(
+los_hdr <- htmltools::withTags(table(
     class = 'display',
     thead(
         tr(
-            th(rowspan = 2, 'Measure'),
+            th(rowspan = 2, valign="bottom", 'Measure'),
             th(colspan = 2, 'Baseline'),
             th(colspan = 2, 'Current')
         ),
         tr(
-            lapply(rep(c('Mean', 'SD'), 2), th)
+            lapply(rep(c('Mean', 'St Dev'), 2), th)
+        )
+    )
+))
+
+data_patients %>%
+    select(pie.id, group, or.hours = or_hours, pacu.hours = pacu_hours, postop.los = postop_los) %>%
+    mutate_at(c("or.hours", "pacu.hours", "postop.los"), as.numeric) %>%
+    left_join(data_demographics[c("pie.id", "length.stay")], by = "pie.id") %>% 
+    group_by(group) %>%
+    summarize_at(c("or.hours", "pacu.hours", "postop.los", "length.stay"), funs(mean, sd), na.rm = TRUE) %>%
+    gather(measure, value, -group) %>%
+    separate(measure, c("measure", "test"), sep = "_") %>%
+    unite(group_test, group, test) %>%
+    spread(group_test, value) %>%
+    select(measure, baseline_mean, baseline_sd, current_mean, current_sd) %>%
+    mutate_at("measure", str_replace_all, pattern = c("length.stay" = "Length of Stay (days)",
+                                                      "or.hours" = "OR Duration (hours)",
+                                                      "pacu.hours" = "PACU Duration (hours)",
+                                                      "postop.los" = "Post-Op LOS (days)")) %>%
+    datatable(caption = "Durations",
+              rownames = FALSE,
+              # colnames = c("Measure", "Mean", "SD", "Mean", "SD"),
+              container = los_hdr,
+              options = list(dom = "t")) %>%
+    formatRound(c("baseline_mean", "baseline_sd", "current_mean", "current_sd"), 1)
+```
+
+```{r}
+hdr <- htmltools::withTags(table(
+    class = 'display',
+    thead(
+        tr(
+            th(rowspan = 2, valign="bottom", 'Measure'),
+            th(colspan = 2, 'Baseline'),
+            th(colspan = 2, 'Current')
+        ),
+        tr(
+            lapply(rep(c('Median', 'IQR'), 2), th)
         )
     )
 ))
 
 include %>%
-    left_join(data_demographics[c("pie.id", "length.stay")], by = "pie.id") %>% 
     left_join(data_pain_scores_all[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
     group_by(group) %>%
-    summarize_at(c("length.stay", "first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(mean, sd), na.rm = TRUE) %>%
+    summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(median, IQR), na.rm = TRUE) %>%
     gather(measure, value, -group) %>%
     separate(measure, c("measure", "test"), sep = "_") %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
-    mutate_at("measure", str_replace_all, pattern = c("length.stay" = "Length of Stay (days)",
-                                                      "first.result" = "First Pain Score",
+    select(measure, baseline_median, baseline_IQR, current_median, current_IQR) %>%
+    mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
                                                       "last.result" = "Last Pain Score",
                                                       "max.result" = "Highest Pain Score",
                                                       "median.result" = "Median Pain Score",
                                                       "time.wt.avg" = "Time-Weighted Avg Pain Score")) %>%
-    datatable(caption = "Outcomes",
+    datatable(caption = "Pain Scores",
               rownames = FALSE,
               # colnames = c("Measure", "Mean", "SD", "Mean", "SD"),
               container = hdr,
               options = list(dom = "t")) %>%
-    formatRound(c("baseline_mean", "baseline_sd", "current_mean", "current_sd"), 1)
+    formatRound(c("baseline_median", "baseline_IQR", "current_median", "current_IQR"), 1)
 ```
 
 ```{r}
 include %>%
     left_join(data_pain_scores_prior[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
     group_by(group) %>%
-    summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(mean, sd), na.rm = TRUE) %>%
+    summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(median, IQR), na.rm = TRUE) %>%
     gather(measure, value, -group) %>%
     separate(measure, c("measure", "test"), sep = "_") %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
+    select(measure, baseline_median, baseline_IQR, current_median, current_IQR) %>%
     mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
                                                       "last.result" = "Last Pain Score",
                                                       "max.result" = "Highest Pain Score",
@@ -105,5 +143,29 @@ include %>%
               rownames = FALSE,
               container = hdr,
               options = list(dom = "t")) %>%
-    formatRound(c("baseline_mean", "baseline_sd", "current_mean", "current_sd"), 1)
+    formatRound(c("baseline_median", "baseline_IQR", "current_median", "current_IQR"), 1)
 ```
+
+```{r}
+
+morph_eq <- data_opiods %>%
+    mutate(morph_eq = case_when(med == "hydromorphone" & (route == "IV" | route == "IVP") ~ med.dose * 0.4,
+                                med == "hydromorphone" & (route == "PO" | route == "NG") ~ med.dose / 0.8,
+                                med == "fentanyl" & (route == "IV" | route == "IVP") ~ med.dose * 0.1,
+                                med == "oxycodone" & (route == "PO" | route == "NG") ~ med.dose / 2.5,
+                                med == "acetaminophen-hydrocodone" & med.dose.units == "mL" ~ med.dose * 10 / 15 / 2.5,
+                                med == "acetaminophen-hydrocodone" & med.dose.units == "mg" ~ med.dose / 2.5,
+                                med == "acetaminophen-codeine" & med.dose.units == "mL" ~ med.dose * 12 / 5 / 6,
+                                med == "acetaminophen-codeine" & med.dose.units == "mg" ~ med.dose / 6,
+                                med == "tramadol" & (route == "PO" | route == "NG") ~ med.dose / 25))
+
+
+include %>%
+    left_join(morph_eq, by = "pie.id") %>%
+    group_by(pie.id, group) %>%
+    summarize_at("morph_eq", sum, na.rm = TRUE) %>%
+    group_by(group) %>%
+    summarize_at("morph_eq", funs(median, IQR), na.rm = TRUE)
+
+```
+
