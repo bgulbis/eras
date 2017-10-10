@@ -1,0 +1,27 @@
+---
+title: "ERAS Bariatric Surgery"
+author: "Brian Gulbis"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+    html_document:
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(plotly)
+
+dir_pre <- "../data/tidy/bari_baseline"
+dir_post <- "../data/tidy/bari_current"
+
+data_patients <- read_rds(paste(dir_pre, "data_patients.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_patients.Rds", sep = "/")))
+
+data_demographics <- read_rds(paste(dir_pre, "data_demographics.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_demographics.Rds", sep = "/")))
+```
+
