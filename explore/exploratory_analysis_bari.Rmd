@@ -9,10 +9,13 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options(knitr.table.format = "html")
 ```
 
 ```{r, message=FALSE}
 library(tidyverse)
+library(stringr)
+library(DT)
 library(plotly)
 
 dir_pre <- "../data/tidy/bari_baseline"
@@ -23,5 +26,84 @@ data_patients <- read_rds(paste(dir_pre, "data_patients.Rds", sep = "/")) %>%
 
 data_demographics <- read_rds(paste(dir_pre, "data_demographics.Rds", sep = "/")) %>%
     bind_rows(read_rds(paste(dir_post, "data_demographics.Rds", sep = "/")))
+
+data_opiods <- read_rds(paste(dir_pre, "data_opiods.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_opiods.Rds", sep = "/")))
+
+data_pain_meds <- read_rds(paste(dir_pre, "data_pain_meds.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_pain_meds.Rds", sep = "/")))
+
+data_pain_scores_all <- read_rds(paste(dir_pre, "data_pain_scores_all.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_pain_scores_all.Rds", sep = "/")))
+
+data_pain_scores_prior <- read_rds(paste(dir_pre, "data_pain_scores_prior.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_pain_scores_prior.Rds", sep = "/")))
+
+data_pca <- read_rds(paste(dir_pre, "data_pca.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_pca.Rds", sep = "/")))
+
+data_revisit <- read_rds(paste(dir_pre, "data_revisit.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_revisit.Rds", sep = "/")))
+
+include <- select(data_patients, pie.id, group)
+
 ```
 
+```{r}
+hdr <- htmltools::withTags(table(
+    class = 'display',
+    thead(
+        tr(
+            th(rowspan = 2, 'Measure'),
+            th(colspan = 2, 'Baseline'),
+            th(colspan = 2, 'Current')
+        ),
+        tr(
+            lapply(rep(c('Mean', 'SD'), 2), th)
+        )
+    )
+))
+
+include %>%
+    left_join(data_demographics[c("pie.id", "length.stay")], by = "pie.id") %>% 
+    left_join(data_pain_scores_all[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
+    group_by(group) %>%
+    summarize_at(c("length.stay", "first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(mean, sd), na.rm = TRUE) %>%
+    gather(measure, value, -group) %>%
+    separate(measure, c("measure", "test"), sep = "_") %>%
+    unite(group_test, group, test) %>%
+    spread(group_test, value) %>%
+    mutate_at("measure", str_replace_all, pattern = c("length.stay" = "Length of Stay (days)",
+                                                      "first.result" = "First Pain Score",
+                                                      "last.result" = "Last Pain Score",
+                                                      "max.result" = "Highest Pain Score",
+                                                      "median.result" = "Median Pain Score",
+                                                      "time.wt.avg" = "Time-Weighted Avg Pain Score")) %>%
+    datatable(caption = "Outcomes",
+              rownames = FALSE,
+              # colnames = c("Measure", "Mean", "SD", "Mean", "SD"),
+              container = hdr,
+              options = list(dom = "t")) %>%
+    formatRound(c("baseline_mean", "baseline_sd", "current_mean", "current_sd"), 1)
+```
+
+```{r}
+include %>%
+    left_join(data_pain_scores_prior[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
+    group_by(group) %>%
+    summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(mean, sd), na.rm = TRUE) %>%
+    gather(measure, value, -group) %>%
+    separate(measure, c("measure", "test"), sep = "_") %>%
+    unite(group_test, group, test) %>%
+    spread(group_test, value) %>%
+    mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
+                                                      "last.result" = "Last Pain Score",
+                                                      "max.result" = "Highest Pain Score",
+                                                      "median.result" = "Median Pain Score",
+                                                      "time.wt.avg" = "Time-Weighted Avg Pain Score")) %>%
+    datatable(caption = "Pre-Medication Pain Scores",
+              rownames = FALSE,
+              container = hdr,
+              options = list(dom = "t")) %>%
+    formatRound(c("baseline_mean", "baseline_sd", "current_mean", "current_sd"), 1)
+```
