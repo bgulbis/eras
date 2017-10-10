@@ -102,7 +102,7 @@ bari_floor <- bari_locations %>%
     filter(pacu_hours > 0)
 
 data_patients <- bari_floor %>%
-    select(pie.id, or_hours, pacu_hours, arrive.datetime:room_out) %>%
+    select(pie.id, or_hours, pacu_hours, preop_los, postop_los, arrive.datetime:room_out) %>%
     rename(floor_days = unit.length.stay) %>%
     mutate(group = "baseline")
 
