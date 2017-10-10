@@ -204,26 +204,38 @@ pain_scores <- read_data(dir_raw, "pain-scores", FALSE) %>%
     as.pain_scores() %>%
     semi_join(bari_id, by = "millennium.id") %>%
     inner_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
-    left_join(data_patients, by = "pie.id")
-
-
-pain_prior <- pain_scores %>%
+    left_join(data_patients, by = "pie.id") %>%
     filter(event.datetime > surgery_start) %>%
-    # filter(order.id == "0",
-    #        event.datetime > surgery_start) %>%
     mutate(time_surg = difftime(event.datetime, surgery_stop, units = "hours"))
 
-pain_avg <- pain_prior %>%
+pain_avg_all <- pain_scores %>%
     filter(time_surg <= 24) %>%
     rename(vital.datetime = event.datetime,
            vital = event,
            vital.result = event.result) %>%
-    mutate_at("vital.result", as.numeric)
+    mutate_at("vital.result", as.numeric) %>%
+    select(pie.id, everything(), -millennium.id)
 
-class(pain_avg) <- append(class(pain_avg), c("vitals", "tbl_edwr"), after = 0L)
-attr(pain_avg, "data") <- "mbo"
+pain_avg_prior <- pain_scores %>%
+    filter(time_surg <= 24,
+           order.id == "0") %>%
+    rename(vital.datetime = event.datetime,
+           vital = event,
+           vital.result = event.result) %>%
+    mutate_at("vital.result", as.numeric) %>%
+    select(pie.id, everything(), -millennium.id)
 
-data_pain_scores <- pain_avg %>%
+class(pain_avg_all) <- append(class(pain_avg_all), c("vitals", "tbl_edwr"), after = 0L)
+attr(pain_avg_all, "data") <- "edw"
+
+data_pain_scores_all <- pain_avg_all %>%
+    calc_runtime() %>%
+    summarize_data()
+
+class(pain_avg_prior) <- append(class(pain_avg_prior), c("vitals", "tbl_edwr"), after = 0L)
+attr(pain_avg_prior, "data") <- "edw"
+
+data_pain_scores_prior <- pain_avg_prior %>%
     calc_runtime() %>%
     summarize_data()
 
