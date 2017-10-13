@@ -190,9 +190,9 @@ meds_pain <- read_data(dir_raw, "meds-inpt", FALSE) %>%
 
 data_pain_meds <- meds_pain %>%
     filter(time_surg < 24) %>%
-    add_count(millennium.id, med, med.dose.units, route) %>%
+    add_count(millennium.id, med, med.dose.units, route, timing) %>%
     rename(num_doses = n) %>%
-    group_by(pie.id, med, med.dose.units, route, num_doses) %>%
+    group_by(pie.id, med, med.dose.units, route, timing, num_doses) %>%
     summarize_at("med.dose", sum, na.rm = TRUE) %>%
     arrange(pie.id, med)
 
@@ -206,7 +206,10 @@ data_meds_cont <- read_data(dir_raw, "meds-inpt", FALSE) %>%
     as.meds_inpt() %>%
     calc_runtime() %>%
     summarize_data() %>%
-    filter(med %in% lookup_meds$med.name)
+    filter(med %in% lookup_meds$med.name,
+           cum.dose > 0) %>%
+    inner_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
+    select(pie.id, everything(), -millennium.id)
 
 # pain scores ------------------------------------------
 
