@@ -100,12 +100,13 @@ data_patients %>%
 ```{r}
 data_revisit %>%
     left_join(include, by = "pie.id") %>%
+    filter(admit.type != "Preadmit Not OB") %>%
     count(group, visit.type) %>%
     left_join(pt_num, by = "group") %>%
     mutate(pct_pt = n / pts) %>%
     select(group, visit.type, pct_pt) %>%
     spread(group, pct_pt) %>%
-    datatable(caption = "Re-encounters within 30 days",
+    datatable(caption = "Unplanned re-encounters at any MHHS facility within 30 days",
               rownames = FALSE,
               colnames = c("Visit Type", "Baseline", "Current"),
               options = list(dom = "t")) %>%
