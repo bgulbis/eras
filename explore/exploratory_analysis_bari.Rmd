@@ -241,7 +241,7 @@ hdr_eq <- htmltools::withTags(table(
             th(colspan = 2, 'Current')
         ),
         tr(
-            lapply(rep(c('N', '%'), 2), th)
+            lapply(rep(c('Median', 'IQR'), 2), th)
         )
     )
 ))
