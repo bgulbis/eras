@@ -153,7 +153,9 @@ bari_revisit_pie <- concat_encounters(bari_encounters$pie.id)
 # revisit admit type and source
 data_revisit <- read_data(dir_raw, "revisit") %>%
     as.visits() %>%
-    inner_join(bari_encounters[c("pie.id", "revisit_days")], by = "pie.id") %>%
+    inner_join(bari_encounters[c("pie.id", "person.id", "revisit_days")], by = "pie.id") %>%
+    rename(revisit_pie = pie.id) %>%
+    left_join(bari_id[c("pie.id", "person.id")], by = "person.id") %>%
     select(-(arrival.datetime:discharge.datetime))
 
 # pain meds --------------------------------------------
@@ -173,10 +175,13 @@ cont_opiods <- tibble(name = c("fentanyl",
                       type = "med",
                       group = "cont")
 
-meds_sched <- read_data(dir_raw, "meds-sched") %>%
-    as.meds_sched()
+lookup_meds <- med_lookup(c("narcotic analgesics", "narcotic analgesic combinations")) %>%
+    mutate_at("med.name", str_to_lower)
 
-meds_pain <- tidy_data(meds_sched, opiods) %>%
+meds_pain <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt() %>%
+    filter(med %in% c(lookup_meds$med.name, "acetaminophen")) %>%
+    left_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
     inner_join(data_patients[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
     mutate(timing = case_when(med.datetime < room_out ~ "or",
                               med.datetime < arrive.datetime ~ "pacu",
@@ -185,11 +190,9 @@ meds_pain <- tidy_data(meds_sched, opiods) %>%
 
 data_pain_meds <- meds_pain %>%
     filter(time_surg < 24) %>%
-    group_by(pie.id, med, med.dose.units, route) %>%
-    # mutate(postop_day = difftime(floor_date(med.datetime, "day"),
-    #                              floor_date(room_out, "day"),
-    #                              units = "days")) %>%
-    # group_by(pie.id, postop_day, med, med.dose.units, route) %>%
+    add_count(millennium.id, med, med.dose.units, route) %>%
+    rename(num_doses = n) %>%
+    group_by(pie.id, med, med.dose.units, route, num_doses) %>%
     summarize_at("med.dose", sum, na.rm = TRUE) %>%
     arrange(pie.id, med)
 
@@ -199,16 +202,11 @@ opiods <- med_lookup(c("narcotic analgesics", "narcotic analgesic combinations")
 data_opiods <- data_pain_meds %>%
     filter(med %in% opiods$med.name)
 
-# seems like these are all PCA
-
-# meds_cont <- read_data(dir_raw, "meds-cont") %>%
-#     as.meds_cont() %>%
-#     tidy_data(cont_opiods, meds_sched)
-#
-# meds_pain_cont <- meds_cont %>%
-#     calc_runtime() %>%
-#     summarize_data() %>%
-#     semi_join(data_patients, by = "pie.id")
+data_meds_cont <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt() %>%
+    calc_runtime() %>%
+    summarize_data() %>%
+    filter(med %in% lookup_meds$med.name)
 
 # pain scores ------------------------------------------
 
