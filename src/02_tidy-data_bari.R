@@ -274,7 +274,8 @@ pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
 
 data_pca <- pain_pca %>%
     # group_by(pie.id, postop_day, pca_drug) %>%
-    filter(time_surg < 24) %>%
+    # filter(time_surg < 24) %>%
+    filter(postop_day <= 1) %>%
     group_by(pie.id, pca_drug) %>%
     summarize_at(c("pca_demands",
                    "pca_delivered",
