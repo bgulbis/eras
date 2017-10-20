@@ -282,6 +282,12 @@ data_pca <- pain_pca %>%
                    "total_dose"),
                  sum, na.rm = TRUE)
 
+data_pca %>%
+    left_join(bari_id, by = "pie.id") %>%
+    left_join(data_patients[c("pie.id", "surgery_stop")], by = "pie.id") %>%
+    ungroup() %>%
+    select(fin, everything(), -pie.id, -millennium.id, -person.id) %>%
+    write_csv("data/external/pca_baseline.csv")
 # nausea meds ------------------------------------------
 # emesis
 # number prn
