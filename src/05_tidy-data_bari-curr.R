@@ -23,8 +23,6 @@ bari_pie <- concat_encounters(bari_pts$pie.id)
 #   * DRG Codes - All
 #   * Identifiers - by PowerInsight Encounter Id
 #   * Location History
-#   * Medications - Inpatient Continuous - All
-#   * Medications - Inpatient Intermittent - All
 #   * Surgeon - by Patient
 #   * Surgery Times
 #   * Visit Data
@@ -35,6 +33,9 @@ bari_id <- read_data(dir_raw, "identifiers") %>%
 bari_mbo <- concat_encounters(bari_id$millennium.id)
 
 # run MBO query:
+#   * Medications - Home and Discharge
+#       - Order Type: Recorded / Home Meds
+#   * Medications - Inpatient - All
 #   * Pain PCA Pump
 #   * Pain Scores
 
@@ -115,7 +116,7 @@ bari_floor <- bari_locations %>%
 data_patients <- bari_floor %>%
     select(pie.id, or_hours, pacu_hours, preop_los, postop_los, arrive.datetime:room_out) %>%
     rename(floor_days = unit.length.stay) %>%
-    semi_join(bari_surgeon, by = "pie.id") %>%
+    inner_join(bari_surgeon, by = c("pie.id", "surgery_start" = "start.datetime")) %>%
     mutate(group = "current")
 
 bari_id <- semi_join(bari_id, data_patients, by = "pie.id")
@@ -294,14 +295,35 @@ data_pca <- pain_pca %>%
                    "total_dose"),
                  sum, na.rm = TRUE)
 
-data_pca %>%
-    left_join(bari_id, by = "pie.id") %>%
-    left_join(data_patients[c("pie.id", "surgery_stop")], by = "pie.id") %>%
-    ungroup() %>%
-    select(fin, everything(), -pie.id, -millennium.id, -person.id) %>%
-    write_csv("data/external/pca_current.csv")
+# data_pca %>%
+#     left_join(bari_id, by = "pie.id") %>%
+#     left_join(data_patients[c("pie.id", "surgery_stop")], by = "pie.id") %>%
+#     ungroup() %>%
+#     select(fin, everything(), -pie.id, -millennium.id, -person.id) %>%
+#     write_csv("data/external/pca_current.csv")
 
 # nausea meds ------------------------------------------
+nv_meds <- med_lookup(c("5HT3 receptor antagonists", "phenothiazine antiemetics")) %>%
+    mutate_at("med.name", str_to_lower)
+
+meds_nausea <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt() %>%
+    filter(med %in% nv_meds$med.name) %>%
+    left_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
+    inner_join(data_patients[c("pie.id", "room_out", "arrive.datetime")], by = "pie.id") %>%
+    mutate(timing = case_when(med.datetime < room_out ~ "or",
+                              med.datetime < arrive.datetime ~ "pacu",
+                              TRUE ~ "floor"),
+           time_surg = difftime(med.datetime, room_out, units = "hours"))
+
+data_nv_meds <- meds_nausea %>%
+    filter(time_surg < 24) %>%
+    add_count(millennium.id, med, med.dose.units, route, timing) %>%
+    rename(num_doses = n) %>%
+    group_by(pie.id, med, med.dose.units, route, timing, num_doses) %>%
+    summarize_at("med.dose", sum, na.rm = TRUE) %>%
+    arrange(pie.id, med)
+
 # emesis
 # number prn
 
