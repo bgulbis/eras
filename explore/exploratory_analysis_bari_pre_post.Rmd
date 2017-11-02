@@ -57,9 +57,8 @@ data_pain_scores_prior <- read_rds(paste(dir_pre, "data_pain_scores_prior.Rds", 
     bind_rows(read_rds(paste(dir_bsln, "data_pain_scores_prior.Rds", sep = "/")),
               read_rds(paste(dir_post, "data_pain_scores_prior.Rds", sep = "/")))
 
-data_pca <- read_rds(paste(dir_pre, "data_pca.Rds", sep = "/")) %>%
-    bind_rows(read_rds(paste(dir_bsln, "data_pca.Rds", sep = "/")),
-              read_rds(paste(dir_post, "data_pca.Rds", sep = "/")))
+data_pca <- read_rds(paste(dir_bsln, "data_pca.Rds", sep = "/")) %>%
+    bind_rows(read_rds(paste(dir_post, "data_pca.Rds", sep = "/")))
 
 data_revisit <- read_rds(paste(dir_pre, "data_revisit.Rds", sep = "/")) %>%
     bind_rows(read_rds(paste(dir_bsln, "data_revisit.Rds", sep = "/")),
@@ -81,9 +80,9 @@ los_hdr <- htmltools::withTags(table(
     thead(
         tr(
             th(rowspan = 2, valign="bottom", 'Measure'),
-            th(colspan = 2, paste0("Baseline (N = ", pts_n$baseline[1]), ")"),
-            th(colspan = 2, paste0("Jan-Jun (N = ", pts_n$current[1]), ")"),
-            th(colspan = 2, paste0("Jul-Sep (N = ", pts_n$recent[1]), ")")
+            th(colspan = 2, paste0("2015 (N = ", pts_n$pre[1]), ")"),
+            th(colspan = 2, paste0("2016 (N = ", pts_n$baseline[1]), ")"),
+            th(colspan = 2, paste0("Jul-Sep 2017 (N = ", pts_n$recent[1]), ")")
         ),
         tr(
             lapply(rep(c('Mean', 'St Dev'), 3), th)
@@ -101,7 +100,7 @@ data_patients %>%
     separate(measure, c("measure", "test"), sep = "_") %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
-    select(measure, baseline_mean, baseline_sd, current_mean, current_sd, recent_mean, recent_sd) %>%
+    select(measure, pre_mean, pre_sd, baseline_mean, baseline_sd, recent_mean, recent_sd) %>%
     mutate_at("measure", str_replace_all, pattern = c("length.stay" = "Length of Stay (days)",
                                                       "or.hours" = "OR Duration (hours)",
                                                       "pacu.hours" = "PACU Duration (hours)",
@@ -111,8 +110,45 @@ data_patients %>%
               # colnames = c("Measure", "Mean", "SD", "Mean", "SD"),
               container = los_hdr,
               options = list(dom = "t")) %>%
-    formatRound(c("baseline_mean", "baseline_sd", "current_mean", "current_sd", "recent_mean", "recent_sd"), 1)
+    formatRound(c("pre_mean", "pre_sd", "baseline_mean", "baseline_sd", "recent_mean", "recent_sd"), 1)
 ```
+
+```{r}
+los_surg_hdr <- htmltools::withTags(table(
+    class = 'display',
+    thead(
+        tr(
+            th(rowspan = 2, valign="bottom", 'Surgeon'),
+            th(colspan = 2, "2015"),
+            th(colspan = 2, "2016"),
+            th(colspan = 2, "Jul-Sep 2017")
+        ),
+        tr(
+            lapply(rep(c('Mean', 'St Dev'), 3), th)
+        )
+    )
+))
+
+data_patients %>%
+    select(pie.id, group, surgeon, or.hours = or_hours, pacu.hours = pacu_hours, postop.los = postop_los) %>%
+    mutate_at(c("or.hours", "pacu.hours", "postop.los"), as.numeric) %>%
+    left_join(data_demographics[c("pie.id", "length.stay")], by = "pie.id") %>% 
+    filter(group != "current") %>%
+    group_by(group, surgeon) %>%
+    summarize_at(c("length.stay"), funs(mean, sd), na.rm = TRUE) %>%
+    gather(measure, value, -group, -surgeon) %>%
+    # separate(measure, c("measure", "test"), sep = "_") %>%
+    unite(group_test, group, measure) %>%
+    spread(group_test, value) %>%
+    select(surgeon, pre_mean, pre_sd, baseline_mean, baseline_sd, recent_mean, recent_sd) %>%
+    datatable(caption = "Length of Stay by Surgeon",
+              rownames = FALSE,
+              container = los_surg_hdr,
+              options = list(dom = "t")) %>%
+    formatRound(c("pre_mean", "pre_sd", "baseline_mean", "baseline_sd", "recent_mean", "recent_sd"), 1)
+```
+
+
 
 ```{r}
 data_revisit %>%
@@ -122,12 +158,14 @@ data_revisit %>%
     left_join(pt_num, by = "group") %>%
     mutate(pct_pt = n / pts) %>%
     select(group, visit.type, pct_pt) %>%
+    filter(group != "current") %>%
     spread(group, pct_pt) %>%
+    select(visit.type, pre, baseline, recent) %>%
     datatable(caption = "Unplanned re-encounters at any MHHS facility within 30 days",
               rownames = FALSE,
-              colnames = c("Visit Type", "Baseline", "Jan-Jun", "Jul-Sep"),
+              colnames = c("Visit Type", "2015", "2016", "Jul-Sep 2017"),
               options = list(dom = "t")) %>%
-    formatPercentage(c("baseline", "current", "recent"), 1)
+    formatPercentage(c("baseline", "pre", "recent"), 1)
 ```
 
 ```{r}
@@ -136,9 +174,9 @@ hdr <- htmltools::withTags(table(
     thead(
         tr(
             th(rowspan = 2, valign="bottom", 'Measure'),
-            th(colspan = 2, 'Baseline'),
-            th(colspan = 2, 'Jan-Jun'),
-            th(colspan = 2, 'Jul-Sep')
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2016'),
+            th(colspan = 2, 'Jul-Sep 2017')
         ),
         tr(
             lapply(rep(c('Median', 'IQR'), 3), th)
@@ -148,13 +186,14 @@ hdr <- htmltools::withTags(table(
 
 include %>%
     left_join(data_pain_scores_all[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
+    filter(group != "current") %>%
     group_by(group) %>%
     summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(median, IQR), na.rm = TRUE) %>%
     gather(measure, value, -group) %>%
     separate(measure, c("measure", "test"), sep = "_") %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
-    select(measure, baseline_median, baseline_IQR, current_median, current_IQR, recent_median, recent_IQR) %>%
+    select(measure, pre_median, pre_IQR, baseline_median, baseline_IQR, recent_median, recent_IQR) %>%
     mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
                                                       "last.result" = "Last Pain Score",
                                                       "max.result" = "Highest Pain Score",
@@ -165,19 +204,20 @@ include %>%
               # colnames = c("Measure", "Mean", "SD", "Mean", "SD"),
               container = hdr,
               options = list(dom = "t")) %>%
-    formatRound(c("baseline_median", "baseline_IQR", "current_median", "current_IQR", "recent_median", "recent_IQR"), 1)
+    formatRound(c("pre_median", "pre_IQR", "baseline_median", "baseline_IQR", "recent_median", "recent_IQR"), 1)
 ```
 
 ```{r}
 include %>%
     left_join(data_pain_scores_prior[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
+    filter(group != "current") %>%
     group_by(group) %>%
     summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(median, IQR), na.rm = TRUE) %>%
     gather(measure, value, -group) %>%
     separate(measure, c("measure", "test"), sep = "_") %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
-    select(measure, baseline_median, baseline_IQR, current_median, current_IQR, recent_median, recent_IQR) %>%
+    select(measure, pre_median, pre_IQR, baseline_median, baseline_IQR, recent_median, recent_IQR) %>%
     mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
                                                       "last.result" = "Last Pain Score",
                                                       "max.result" = "Highest Pain Score",
@@ -187,7 +227,25 @@ include %>%
               rownames = FALSE,
               container = hdr,
               options = list(dom = "t")) %>%
-    formatRound(c("baseline_median", "baseline_IQR", "current_median", "current_IQR", "recent_median", "recent_IQR"), 1)
+    formatRound(c("pre_median", "pre_IQR", "baseline_median", "baseline_IQR", "recent_median", "recent_IQR"), 1)
+```
+
+```{r}
+data_demographics %>%
+    left_join(data_patients[c("pie.id", "group")], by = "pie.id") %>%
+    group_by(group) %>%
+    summarize_at("home_pain_med", sum, na.rm = TRUE) %>%
+    left_join(pt_num, by = "group") %>%
+    mutate(pct_pts = home_pain_med / pts) %>%
+    select(-pts) %>%
+    filter(group != "current") %>%
+    mutate_at("group", str_replace_all, pattern = c("baseline" = "2016", pre = "2015", recent = "Jul-Sep 2017")) %>%
+    arrange(group) %>%
+    datatable(caption = "Patients on opiods prior to admission",
+              rownames = FALSE,
+              colnames = c("Group", "N", "%"),
+              options = list(dom = "t")) %>%
+    formatPercentage("pct_pts", 1)
 ```
 
 ```{r}
@@ -197,9 +255,9 @@ hdr_location <- htmltools::withTags(table(
         tr(
             th(rowspan = 2, valign="bottom", 'Location'),
             th(rowspan = 2, valign="bottom", 'Route'),
-            th(colspan = 2, 'Baseline'),
-            th(colspan = 2, 'Jan-Jun'),
-            th(colspan = 2, 'Jul-Sep')
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2016'),
+            th(colspan = 2, 'Jul-Sep 2017')
         ),
         tr(
             lapply(rep(c('N', '%'), 3), th)
@@ -218,6 +276,7 @@ include %>%
     left_join(data_pain_meds, by = "pie.id") %>%
     filter(!is.na(timing)) %>%
     mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
+    filter(group != "current") %>%
     group_by(group, timing, route) %>%
     summarize_at("num_doses", sum, na.rm = TRUE) %>%
     left_join(count_total_doses, by = "group") %>%
@@ -226,29 +285,35 @@ include %>%
     gather(test, value, num_doses, pct_doses) %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
+    select(timing, route, pre_num_doses, pre_pct_doses, everything()) %>%
     datatable(caption = "Location where pain medications are given",
               rownames = FALSE,
               container = hdr_location,
               options = list(dom = "t")) %>%
-    formatPercentage(c("baseline_pct_doses", "current_pct_doses", "recent_pct_doses"), 1)
+    formatPercentage(c("baseline_pct_doses", "pre_pct_doses", "recent_pct_doses"), 1)
 ```
+
+* Medications given in the OR were not documented in the EMR in 2015 or 2016
 
 ```{r}
 data_pca %>%
     left_join(include, by = "pie.id") %>%
     ungroup() %>%
+    filter(group != "current") %>%
     count(group) %>%
     left_join(pt_num, by = "group") %>%
     mutate(num_pca = n / pts) %>%
     select(-pts) %>%
     mutate_at("group", str_to_title) %>%
-    mutate_at("group", str_replace_all, pattern = c("Current" = "Jan-Jun", "Recent" = "Jul-Sep")) %>%
+    mutate_at("group", str_replace_all, pattern = c("Baseline" = "2016", "Recent" = "Jul-Sep 2017")) %>%
     datatable(caption = "PCA Use",
               rownames = FALSE,
               colnames = c("Group", "N", "%"),
               options = list(dom = "t")) %>%
     formatPercentage("num_pca", 1)
 ```
+
+* PCA use was not documented in the EMR during 2015
 
 ```{r}
 hdr_eq <- htmltools::withTags(table(
@@ -257,9 +322,9 @@ hdr_eq <- htmltools::withTags(table(
         tr(
             th(rowspan = 2, valign="bottom", 'Measure'),
             th(rowspan = 2, valign="bottom", 'Location'),
-            th(colspan = 2, 'Baseline'),
-            th(colspan = 2, 'Jan-Jun'),
-            th(colspan = 2, 'Jul-Sep')
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2016'),
+            th(colspan = 2, 'Jul-Sep 2017')
         ),
         tr(
             lapply(rep(c('Median', 'IQR'), 3), th)
@@ -325,6 +390,7 @@ pca_total <- include %>%
 pca_eq %>%
     bind_rows(morph_eq) %>%
     right_join(include, by = "pie.id") %>%
+    filter(group != "current") %>%
     group_by(group) %>%
     summarize_at("morph_eq", funs(median, IQR), na.rm = TRUE) %>%
     mutate(measure = "Morphine Equivalents (All Sources)") %>%
@@ -333,12 +399,12 @@ pca_eq %>%
     spread(group_test, value) %>%
     mutate(timing = "all") %>%
     bind_rows(med_total_location, med_total, pca_total) %>%
-    select(measure, timing, everything()) %>%
+    select(measure, timing, pre_median, pre_IQR, baseline_median, baseline_IQR, recent_median, recent_IQR) %>%
     datatable(caption = "Opiod Total Dosage",
               rownames = FALSE,
               container = hdr_eq,
               options = list(dom = "t")) %>%
-    formatRound(c("baseline_median", "baseline_IQR", "current_median", "current_IQR", "recent_median", "recent_IQR"), 1)
+    formatRound(c("baseline_median", "baseline_IQR", "pre_median", "pre_IQR", "recent_median", "recent_IQR"), 1)
 
 ```
 
@@ -354,15 +420,15 @@ hdr_meds <- htmltools::withTags(table(
             th(colspan = 6, 'Median Total Dose')
         ),
         tr(
-            th(colspan = 2, 'Baseline'),
-            th(colspan = 2, 'Jan-Jun'),
-            th(colspan = 2, 'Jul-Sep'),
-            th(colspan = 2, 'Baseline'),
-            th(colspan = 2, 'Jan-Jun'),
-            th(colspan = 2, 'Jul-Sep'),
-            th(colspan = 2, 'Baseline'),
-            th(colspan = 2, 'Jan-Jun'),
-            th(colspan = 2, 'Jul-Sep')
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2106'),
+            th(colspan = 2, 'Jul-Sep 2017'),
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2106'),
+            th(colspan = 2, 'Jul-Sep 2017'),
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2106'),
+            th(colspan = 2, 'Jul-Sep 2017')
         ),
         tr(
             lapply(rep(c('N', '%'), 3), th),
@@ -374,8 +440,10 @@ hdr_meds <- htmltools::withTags(table(
 meds_count <- include %>%
     left_join(data_pain_meds, by = "pie.id") %>%
     mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
-    filter(!is.na(med)) %>%
+    filter(!is.na(med), 
+           timing == "floor") %>%
     ungroup() %>%
+    distinct(pie.id, group, med, route) %>%
     count(group, med, route) %>%
     left_join(pt_num, by = "group") %>%
     mutate(med_pct = n / pts) %>%
@@ -387,54 +455,23 @@ include %>%
                                          med == "acetaminophen-codeine" & med.dose.units == "mL" ~ med.dose * 12 / 5,
                                          TRUE ~ med.dose))) %>%
     mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
-    filter(!is.na(med)) %>%
+    filter(!is.na(med), 
+           timing == "floor",
+           group != "current") %>%
     group_by(group, med, route) %>%
     summarize_at(c("num_doses", "med.dose"), funs(median, IQR), na.rm = TRUE) %>%
     left_join(meds_count, by = c("group", "med", "route")) %>%
     gather(test, value, n, med_pct, num_doses_median, med.dose_median, num_doses_IQR, med.dose_IQR) %>%
     unite(group_test, group, test) %>%
     spread(group_test, value) %>%
-    select(med, route, baseline_n, baseline_med_pct, current_n, current_med_pct, recent_n, recent_med_pct, baseline_num_doses_median, baseline_num_doses_IQR, current_num_doses_median, current_num_doses_IQR, recent_num_doses_median, recent_num_doses_IQR, baseline_med.dose_median, baseline_med.dose_IQR, current_med.dose_median, current_med.dose_IQR, recent_med.dose_median, recent_med.dose_IQR) %>%
-    datatable(caption = "Pain Medications (All Locations)",
-              rownames = FALSE,
-              container = hdr_meds,
-              options = list(dom = "t")) %>%
-    formatPercentage(c("baseline_med_pct", "current_med_pct", "recent_med_pct"), 1)
-```
-
-```{r}
-meds_count <- include %>%
-    left_join(data_pain_meds, by = "pie.id") %>%
-    mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
-    filter(!is.na(med), timing == "floor") %>%
-    ungroup() %>%
-    count(group, med, route) %>%
-    left_join(pt_num, by = "group") %>%
-    mutate(med_pct = n / pts) %>%
-    select(-pts)
-
-include %>%
-    left_join(data_pain_meds, by = "pie.id") %>%
-    mutate_at("med.dose", funs(case_when(med == "acetaminophen-hydrocodone" & med.dose.units == "mL" ~ med.dose * 10 / 15,
-                                         med == "acetaminophen-codeine" & med.dose.units == "mL" ~ med.dose * 12 / 5,
-                                         TRUE ~ med.dose))) %>%
-    mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
-    filter(!is.na(med), timing == "floor") %>%
-    group_by(group, med, route) %>%
-    summarize_at(c("num_doses", "med.dose"), funs(median, IQR), na.rm = TRUE) %>%
-    left_join(meds_count, by = c("group", "med", "route")) %>%
-    gather(test, value, n, med_pct, num_doses_median, med.dose_median, num_doses_IQR, med.dose_IQR) %>%
-    unite(group_test, group, test) %>%
-    spread(group_test, value) %>%
-    select(med, route, baseline_n, baseline_med_pct, current_n, current_med_pct, recent_n, recent_med_pct, baseline_num_doses_median, baseline_num_doses_IQR, current_num_doses_median, current_num_doses_IQR, recent_num_doses_median, recent_num_doses_IQR, baseline_med.dose_median, baseline_med.dose_IQR, current_med.dose_median, current_med.dose_IQR, recent_med.dose_median, recent_med.dose_IQR) %>%
+    select(med, route, pre_n, pre_med_pct, baseline_n, baseline_med_pct, recent_n, recent_med_pct, pre_num_doses_median, pre_num_doses_IQR, baseline_num_doses_median, baseline_num_doses_IQR, recent_num_doses_median, recent_num_doses_IQR, pre_med.dose_median, pre_med.dose_IQR, baseline_med.dose_median, baseline_med.dose_IQR, recent_med.dose_median, recent_med.dose_IQR) %>%
     datatable(caption = "Pain Medications (Floor Only)",
               rownames = FALSE,
               container = hdr_meds,
               options = list(dom = "t")) %>%
-    formatPercentage(c("baseline_med_pct", "current_med_pct", "recent_med_pct"), 1)
+    formatPercentage(c("baseline_med_pct", "pre_med_pct", "recent_med_pct"), 1)
 
 ```
-
 
 ```{r eval=FALSE}
 apap <- include %>%
@@ -455,4 +492,6 @@ apap %>%
               options = list(dom = "t")) %>%
     formatPercentage("apap_pct", 1)
 ```
+
+
 
