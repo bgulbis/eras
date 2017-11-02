@@ -24,6 +24,7 @@ bari_pie <- concat_encounters(bari_pts$pie.id)
 #   * Identifiers - by PowerInsight Encounter Id
 #   * Location History
 #   * Surgeon - by Patient
+#   * Surgeries
 #   * Surgery Times
 #   * Visit Data
 
@@ -68,34 +69,22 @@ bari_locations <- read_data(dir_raw, "locations") %>%
     tidy_data() %>%
     semi_join(bari_visit, by = "pie.id")
 
+surg <- read_data(dir_raw, "surgeries") %>%
+    as.surgeries() %>%
+    filter(primary.proc) %>%
+    select(pie.id, surgery, surg.start.datetime)
+
 bari_surg_times <- read_data(dir_raw, "surgery-times") %>%
-    # rename(pie.id = `PowerInsight Encounter Id`,
-    #        surgery_start = `Start Date/Time`,
-    #        surgery_stop = `Stop Date/Time`,
-    #        room_in = `Patient In Room Date/Time`,
-    #        room_out = `Patient Out Room Date/Time`,
-    #        recovery_in = `Patient In Recovery Date/Time`,
-    #        recovery_out = `Patient Out Recovery Date/Time`) %>%
-    # distinct() %>%
     as.surgery_times() %>%
     semi_join(bari_visit, by = "pie.id") %>%
     filter(!is.na(surgery_start)) %>%
     mutate_at(c("surgery_start", "surgery_stop", "room_in", "room_out"),
               ymd_hms, tz = "US/Central") %>%
     arrange(pie.id, surgery_start) %>%
-    add_count(pie.id)
-
-# bari_floor <- bari_locations %>%
-#     semi_join(bari_visit, by = "pie.id") %>%
-#     left_join(bari_surg_times, by = "pie.id") %>%
-#     filter(!is.na(location)) %>%
-#     mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
-#            or_hours = difftime(room_out, room_in, units = "hours")) %>%
-#     filter(pacu_hours > 0) %>%
-#     group_by(pie.id) %>%
-#     arrange(pacu_hours, .by_group = TRUE) %>%
-#     distinct(pie.id, .keep_all = TRUE) %>%
-#     filter(location == "Jones 9 Bariatric/General Surgery")
+    left_join(surg, by = c("pie.id", "surgery_start" = "surg.start.datetime")) %>%
+    filter(!(surgery %in% c("Laparoscopy Diagnostic", "Hernia Hiatal Repair Laparoscopic"))) %>%
+    add_count(pie.id) %>%
+    distinct(pie.id, surgery_start, .keep_all = TRUE)
 
 bari_floor <- bari_locations %>%
     semi_join(bari_visit, by = "pie.id") %>%
@@ -114,20 +103,13 @@ bari_floor <- bari_locations %>%
     filter(pacu_hours > 0)
 
 data_patients <- bari_floor %>%
-    select(pie.id, or_hours, pacu_hours, preop_los, postop_los, arrive.datetime:room_out) %>%
+    select(pie.id, surgery, or_hours, pacu_hours, preop_los, postop_los, arrive.datetime:room_out) %>%
     rename(floor_days = unit.length.stay) %>%
     inner_join(bari_surgeon, by = c("pie.id", "surgery_start" = "start.datetime")) %>%
     mutate(group = "pre")
 
 bari_id <- semi_join(bari_id, data_patients, by = "pie.id")
 bari_pts <- semi_join(bari_pts, data_patients, by = "pie.id")
-
-# demographics -----------------------------------------
-
-data_demographics <- read_data(dir_raw, "demographics") %>%
-    as.demographics() %>%
-    semi_join(data_patients, by = "pie.id")
-
 
 # revisits ---------------------------------------------
 
@@ -263,37 +245,37 @@ pca_actions <- c("pca continuous rate dose" = "pca_rate",
                  "pca lockout interval \\(minutes\\)" = "pca_lockout",
                  "pca total demands" = "pca_demands")
 
-pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
-    as.pain_scores() %>%
-    inner_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
-    select(pie.id, millennium.id:event.result) %>%
-    mutate_at("event", str_replace_all, pattern = pca_actions) %>%
-    distinct() %>%
-    spread(event, event.result) %>%
-    mutate_at(c("pca_demands",
-                "pca_dose",
-                "pca_delivered",
-                "pca_load",
-                "pca_lockout",
-                "pca_rate"),
-              as.numeric) %>%
-    left_join(data_patients[c("pie.id", "room_out", "depart.datetime")], by = "pie.id") %>%
-    group_by(pie.id, event.datetime) %>%
-    mutate(total_dose = sum(pca_delivered * pca_dose, pca_load, na.rm = TRUE),
-           postop_day = difftime(floor_date(event.datetime, "day"),
-                                 floor_date(room_out, "day"),
-                                 units = "days"),
-           time_surg = difftime(event.datetime, room_out, units = "hours"))
-
-data_pca <- pain_pca %>%
-    # group_by(pie.id, postop_day, pca_drug) %>%
-    # filter(time_surg < 24) %>%
-    filter(postop_day <= 1) %>%
-    group_by(pie.id, pca_drug) %>%
-    summarize_at(c("pca_demands",
-                   "pca_delivered",
-                   "total_dose"),
-                 sum, na.rm = TRUE)
+# pain_pca <- read_data(dir_raw, "pain-pca", FALSE) %>%
+#     as.pain_scores() %>%
+#     inner_join(bari_id[c("millennium.id", "pie.id")], by = "millennium.id") %>%
+#     select(pie.id, millennium.id:event.result) %>%
+#     mutate_at("event", str_replace_all, pattern = pca_actions) %>%
+#     distinct() %>%
+#     spread(event, event.result) %>%
+#     mutate_at(c("pca_demands",
+#                 "pca_dose",
+#                 "pca_delivered",
+#                 "pca_load",
+#                 "pca_lockout",
+#                 "pca_rate"),
+#               as.numeric) %>%
+#     left_join(data_patients[c("pie.id", "room_out", "depart.datetime")], by = "pie.id") %>%
+#     group_by(pie.id, event.datetime) %>%
+#     mutate(total_dose = sum(pca_delivered * pca_dose, pca_load, na.rm = TRUE),
+#            postop_day = difftime(floor_date(event.datetime, "day"),
+#                                  floor_date(room_out, "day"),
+#                                  units = "days"),
+#            time_surg = difftime(event.datetime, room_out, units = "hours"))
+#
+# data_pca <- pain_pca %>%
+#     # group_by(pie.id, postop_day, pca_drug) %>%
+#     # filter(time_surg < 24) %>%
+#     filter(postop_day <= 1) %>%
+#     group_by(pie.id, pca_drug) %>%
+#     summarize_at(c("pca_demands",
+#                    "pca_delivered",
+#                    "total_dose"),
+#                  sum, na.rm = TRUE)
 
 # data_pca %>%
 #     left_join(bari_id, by = "pie.id") %>%
@@ -303,6 +285,22 @@ data_pca <- pain_pca %>%
 #     write_csv("data/external/pca_current.csv")
 
 # home pain meds ---------------------------------------
+
+meds_home <- read_data(dir_raw, "meds-home", FALSE) %>%
+    as.meds_home() %>%
+    filter(med %in% lookup_meds$med.name) %>%
+    distinct(millennium.id) %>%
+    mutate(home_pain_med = TRUE) %>%
+    left_join(bari_id[c("pie.id", "millennium.id")], by = "millennium.id") %>%
+    select(-millennium.id)
+
+# demographics -----------------------------------------
+
+data_demographics <- read_data(dir_raw, "demographics") %>%
+    as.demographics() %>%
+    semi_join(data_patients, by = "pie.id") %>%
+    left_join(meds_home, by = "pie.id") %>%
+    mutate_at("home_pain_med", funs(coalesce(., FALSE)))
 
 # nausea meds ------------------------------------------
 nv_meds <- med_lookup(c("5HT3 receptor antagonists", "phenothiazine antiemetics")) %>%
