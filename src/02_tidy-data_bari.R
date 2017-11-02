@@ -101,7 +101,10 @@ bari_floor <- bari_locations %>%
     mutate(pacu_hours = difftime(arrive.datetime, room_out, units = "hours"),
            or_hours = difftime(room_out, room_in, units = "hours"),
            preop_los = difftime(surgery_start, admit.datetime, units = "days"),
-           postop_los = difftime(discharge.datetime, surgery_stop, units = "days")) %>%
+           postop_los = difftime(discharge.datetime, surgery_stop, units = "days"),
+           dc_day = difftime(floor_date(discharge.datetime, unit = "day"),
+                             floor_date(surgery_stop, unit = "day"),
+                             units = "days")) %>%
     filter(pacu_hours > 0)
 
 data_patients <- bari_floor %>%
