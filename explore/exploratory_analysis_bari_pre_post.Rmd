@@ -148,7 +148,40 @@ data_patients %>%
     formatRound(c("pre_mean", "pre_sd", "baseline_mean", "baseline_sd", "recent_mean", "recent_sd"), 1)
 ```
 
+```{r}
+los_surg_hdr <- htmltools::withTags(table(
+    class = 'display',
+    thead(
+        tr(
+            th(rowspan = 2, valign="bottom", 'Surgery'),
+            th(colspan = 2, "2015"),
+            th(colspan = 2, "2016"),
+            th(colspan = 2, "Jul-Sep 2017")
+        ),
+        tr(
+            lapply(rep(c('Mean', 'St Dev'), 3), th)
+        )
+    )
+))
 
+data_patients %>%
+    select(pie.id, group, surgery, or.hours = or_hours, pacu.hours = pacu_hours, postop.los = postop_los) %>%
+    mutate_at(c("or.hours", "pacu.hours", "postop.los"), as.numeric) %>%
+    left_join(data_demographics[c("pie.id", "length.stay")], by = "pie.id") %>% 
+    filter(group != "current") %>%
+    group_by(group, surgery) %>%
+    summarize_at(c("length.stay"), funs(mean, sd), na.rm = TRUE) %>%
+    gather(measure, value, -group, -surgery) %>%
+    # separate(measure, c("measure", "test"), sep = "_") %>%
+    unite(group_test, group, measure) %>%
+    spread(group_test, value) %>%
+    select(surgery, pre_mean, pre_sd, baseline_mean, baseline_sd, recent_mean, recent_sd) %>%
+    datatable(caption = "Length of Stay by Surgery",
+              rownames = FALSE,
+              container = los_surg_hdr,
+              options = list(dom = "t")) %>%
+    formatRound(c("pre_mean", "pre_sd", "baseline_mean", "baseline_sd", "recent_mean", "recent_sd"), 1)
+```
 
 ```{r}
 data_revisit %>%
