@@ -106,7 +106,7 @@ bari_floor <- bari_locations %>%
     filter(pacu_hours > 0)
 
 data_patients <- bari_floor %>%
-    select(pie.id, surgery, or_hours, pacu_hours, preop_los, postop_los, arrive.datetime:room_out) %>%
+    select(pie.id, surgery, dc_day, or_hours, pacu_hours, preop_los, postop_los, arrive.datetime:room_out) %>%
     rename(floor_days = unit.length.stay) %>%
     inner_join(bari_surgeon, by = c("pie.id", "surgery_start" = "start.datetime")) %>%
     mutate(group = "current")
