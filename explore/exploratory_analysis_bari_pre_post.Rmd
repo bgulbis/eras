@@ -114,6 +114,27 @@ data_patients %>%
 ```
 
 ```{r}
+data_patients %>%
+    ungroup() %>%
+    select(pie.id, group, dc_day) %>%
+    filter(group != "current") %>%
+    mutate_at("dc_day", as.numeric) %>%
+    add_count(group) %>%
+    group_by(group, n) %>%
+    summarize_at("dc_day", funs(sum(. == 1, na.rm = TRUE))) %>%
+    ungroup() %>%
+    mutate(pct_pod = dc_day / n) %>%
+    select(-n) %>%
+    mutate_at("group", str_replace_all, pattern = c("baseline" = "2016", pre = "2015", recent = "Jul-Sep 2017")) %>%
+    arrange(group) %>%
+    datatable(caption = "Patients discharged on post-op day 1",
+              rownames = FALSE,
+              colnames = c("Group", "N", "%"),
+              options = list(dom = "t")) %>%
+    formatPercentage("pct_pod", 1)
+```
+
+```{r}
 los_surg_hdr <- htmltools::withTags(table(
     class = 'display',
     thead(
@@ -506,25 +527,65 @@ include %>%
 
 ```
 
-```{r eval=FALSE}
-apap <- include %>%
-    left_join(data_pain_meds, by = "pie.id") %>%
-    filter(med == "acetaminophen") %>%
-    mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV")) %>%
-    ungroup()
+```{r}
+hdr_meds <- htmltools::withTags(table(
+    class = 'display',
+    thead(
+        tr(
+            th(rowspan = 3, valign="bottom", 'Medication'),
+            th(rowspan = 3, valign="bottom", 'Route'),
+            th(colspan = 6, 'Number of Patients'),
+            th(colspan = 6, 'Number of Doses'),
+            th(colspan = 6, 'Median Total Dose')
+        ),
+        tr(
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2106'),
+            th(colspan = 2, 'Jul-Sep 2017'),
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2106'),
+            th(colspan = 2, 'Jul-Sep 2017'),
+            th(colspan = 2, '2015'),
+            th(colspan = 2, '2106'),
+            th(colspan = 2, 'Jul-Sep 2017')
+        ),
+        tr(
+            lapply(rep(c('N', '%'), 3), th),
+            lapply(rep(c('Median', 'IQR'), 6), th)
+        )
+    )
+))
 
-apap %>%
-    count(group, route) %>%
+meds_count <- include %>%
+    left_join(data_nausea_meds, by = "pie.id") %>%
+    mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
+    filter(!is.na(med), 
+           timing == "floor") %>%
+    ungroup() %>%
+    distinct(pie.id, group, med, route) %>%
+    count(group, med, route) %>%
     left_join(pt_num, by = "group") %>%
-    mutate(apap_pct = n / pts) %>%
-    select(-pts) %>%
-    mutate_at("group", str_to_title) %>%
-    datatable(caption = "Acetaminophen Use",
+    mutate(med_pct = n / pts) %>%
+    select(-pts)
+
+include %>%
+    left_join(data_nausea_meds, by = "pie.id") %>%
+    mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
+    filter(!is.na(med), 
+           timing == "floor",
+           group != "current",
+           route != "DIALYSIS") %>%
+    group_by(group, med, route) %>%
+    summarize_at(c("num_doses", "med.dose"), funs(median, IQR), na.rm = TRUE) %>%
+    left_join(meds_count, by = c("group", "med", "route")) %>%
+    gather(test, value, n, med_pct, num_doses_median, med.dose_median, num_doses_IQR, med.dose_IQR) %>%
+    unite(group_test, group, test) %>%
+    spread(group_test, value) %>%
+    select(med, route, pre_n, pre_med_pct, baseline_n, baseline_med_pct, recent_n, recent_med_pct, pre_num_doses_median, pre_num_doses_IQR, baseline_num_doses_median, baseline_num_doses_IQR, recent_num_doses_median, recent_num_doses_IQR, pre_med.dose_median, pre_med.dose_IQR, baseline_med.dose_median, baseline_med.dose_IQR, recent_med.dose_median, recent_med.dose_IQR) %>%
+    datatable(caption = "Nausea Medications (Floor Only)",
               rownames = FALSE,
-              colnames = c("Group", "Route", "N", "%"),
+              container = hdr_meds,
               options = list(dom = "t")) %>%
-    formatPercentage("apap_pct", 1)
+    formatPercentage(c("baseline_med_pct", "pre_med_pct", "recent_med_pct"), 1)
+
 ```
-
-
-
