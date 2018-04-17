@@ -475,37 +475,28 @@ data_revisit %>%
     spread(visit.type, n) %>%
     gather(visit.type, n, Inpatient, Observation) %>%
     mutate_at("n", funs(coalesce(., 0L))) %>%
-    mutate(           
-        label = if_else(
-            surg_month == max(surg_month),
-            visit.type,
-            NA_character_
-        )
-    ) %>%
     ungroup() %>%
     full_join(num, by = "surg_month") %>%
     mutate(pct_pt = n / pts * 100) %>%
+    filter(!is.na(visit.type)) %>%
     ggplot(aes(x = surg_month, y = pct_pt)) +
-    geom_line(aes(color = visit.type)) +
-    geom_text_repel(
-        aes(label = label), 
-        size = 3,
-        color = "grey35",
-        nudge_y = 1,
-        na.rm = TRUE,
-        min.segment.length = 5
+    geom_bar(
+        aes(fill = visit.type), 
+        stat = "identity",
+        position = "dodge"
     ) +
     scale_x_datetime(
         NULL,
         date_breaks = "1 month",
         date_labels = "%b %y"
     ) +
-    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
+    scale_fill_brewer(NULL, palette = brew_pal) +
     xlab(NULL) +
     ylab("Patients (%)") +
     theme_bg()
     
 ```
+
 
 ```{r, fig.cap="Pain scores"}
 df <- data_pain_scores_all %>%
@@ -652,25 +643,33 @@ df %>%
 
 ```
 
+```{r, fig.cap="Percent of patients on opiods prior to admission"}
+num <- data_patients %>%
+    ungroup() %>%
+    count(surg_month) %>%
+    rename(pts = n)
 
-
-```{r}
 data_demographics %>%
-    left_join(data_patients[c("pie.id", "group")], by = "pie.id") %>%
-    group_by(group) %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    group_by(surg_month) %>%
     summarize_at("home_pain_med", sum, na.rm = TRUE) %>%
-    left_join(pt_num, by = "group") %>%
-    mutate(pct_pts = home_pain_med / pts) %>%
-    select(-pts) %>%
-    filter(group != "current") %>%
-    mutate_at("group", str_replace_all, pattern = c("baseline" = "2016", pre = "2015", recent = "Jul-Sep 2017")) %>%
-    arrange(group) %>%
-    datatable(caption = "Patients on opiods prior to admission",
-              rownames = FALSE,
-              colnames = c("Group", "N", "%"),
-              options = list(dom = "t")) %>%
-    formatPercentage("pct_pts", 1)
+    ungroup() %>%
+    full_join(num, by = "surg_month") %>%
+    mutate(pct_pt = home_pain_med / pts * 100) %>%
+    ggplot(aes(x = surg_month, y = pct_pt)) +
+    geom_bar(stat = "identity") +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "1 month",
+        date_labels = "%b %y"
+    ) +
+    xlab(NULL) +
+    ylab("Patients (%)") +
+    theme_bg()
+    
 ```
+
+
 
 ```{r}
 hdr_location <- htmltools::withTags(table(
