@@ -507,67 +507,152 @@ data_revisit %>%
     
 ```
 
-```{r}
-hdr <- htmltools::withTags(table(
-    class = 'display',
-    thead(
-        tr(
-            th(rowspan = 2, valign="bottom", 'Measure'),
-            th(colspan = 2, '2015'),
-            th(colspan = 2, '2016'),
-            th(colspan = 2, 'Jul-Sep 2017')
+```{r, fig.cap="Pain scores"}
+df <- data_pain_scores_all %>%
+    select(
+        millennium.id, 
+        first.result:max.result, 
+        time.wt.avg
+    ) %>%
+    gather(
+        key, 
+        value,
+        first.result, 
+        last.result, 
+        max.result, 
+        time.wt.avg
+    ) %>%
+    mutate_at(
+        "key",
+        factor,
+        levels = c(
+            "first.result", 
+            "last.result", 
+            "max.result", 
+            "time.wt.avg"
         ),
-        tr(
-            lapply(rep(c('Median', 'IQR'), 3), th)
+        labels = c(
+            "First",
+            "Last",
+            "Max",
+            "Average"
         )
+    ) %>%
+    group_by(key)
+    
+fit <- df %>%
+    mutate_at("last.datetime", as.numeric) %>%
+    do(augment(loess(value ~ last.datetime, .))) %>%
+    filter(last.datetime == max(last.datetime)) %>%
+    select(-last.datetime) %>%
+    left_join(
+        df %>%
+            select(key, last.datetime) %>%
+            filter(last.datetime == max(last.datetime)),
+        by = "key"
     )
-))
 
-include %>%
-    left_join(data_pain_scores_all[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
-    filter(group != "current") %>%
-    group_by(group) %>%
-    summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(median, IQR), na.rm = TRUE) %>%
-    gather(measure, value, -group) %>%
-    separate(measure, c("measure", "test"), sep = "_") %>%
-    unite(group_test, group, test) %>%
-    spread(group_test, value) %>%
-    select(measure, pre_median, pre_IQR, baseline_median, baseline_IQR, recent_median, recent_IQR) %>%
-    mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
-                                                      "last.result" = "Last Pain Score",
-                                                      "max.result" = "Highest Pain Score",
-                                                      "median.result" = "Median Pain Score",
-                                                      "time.wt.avg" = "Time-Weighted Avg Pain Score")) %>%
-    datatable(caption = "Pain Scores",
-              rownames = FALSE,
-              # colnames = c("Measure", "Mean", "SD", "Mean", "SD"),
-              container = hdr,
-              options = list(dom = "t")) %>%
-    formatRound(c("pre_median", "pre_IQR", "baseline_median", "baseline_IQR", "recent_median", "recent_IQR"), 1)
+df %>%
+    ggplot(aes(x = last.datetime, y = value)) +
+    geom_smooth(
+        aes(color = key),
+        method = "loess",
+        se = FALSE
+    ) +
+    geom_text_repel(
+        data = fit,
+        aes(label = key, x = last.datetime, y = .fitted), 
+        size = 3,
+        color = "grey35",
+        # nudge_y = 0.1,
+        na.rm = TRUE,
+        min.segment.length = 5
+    ) +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "1 month",
+        date_labels = "%b %y"
+    ) +
+    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
+    scale_y_continuous("Pain score", breaks = seq(0, 10, by = 1)) +
+    theme_bg()
+
 ```
 
-```{r}
-include %>%
-    left_join(data_pain_scores_prior[c("pie.id", "first.result", "last.result", "median.result", "max.result", "time.wt.avg")], by = "pie.id") %>%
-    filter(group != "current") %>%
-    group_by(group) %>%
-    summarize_at(c("first.result", "last.result", "median.result", "max.result", "time.wt.avg"), funs(median, IQR), na.rm = TRUE) %>%
-    gather(measure, value, -group) %>%
-    separate(measure, c("measure", "test"), sep = "_") %>%
-    unite(group_test, group, test) %>%
-    spread(group_test, value) %>%
-    select(measure, pre_median, pre_IQR, baseline_median, baseline_IQR, recent_median, recent_IQR) %>%
-    mutate_at("measure", str_replace_all, pattern = c("first.result" = "First Pain Score",
-                                                      "last.result" = "Last Pain Score",
-                                                      "max.result" = "Highest Pain Score",
-                                                      "median.result" = "Median Pain Score",
-                                                      "time.wt.avg" = "Time-Weighted Avg Pain Score")) %>%
-    datatable(caption = "Pre-Medication Pain Scores",
-              rownames = FALSE,
-              container = hdr,
-              options = list(dom = "t")) %>%
-    formatRound(c("pre_median", "pre_IQR", "baseline_median", "baseline_IQR", "recent_median", "recent_IQR"), 1)
+```{r, fig.cap="Pre-medication pain scores"}
+df <- data_pain_scores_prior %>%
+    select(
+        millennium.id, 
+        first.result:max.result, 
+        time.wt.avg
+    ) %>%
+    gather(
+        key, 
+        value,
+        first.result, 
+        last.result, 
+        max.result, 
+        time.wt.avg
+    ) %>%
+    mutate_at(
+        "key",
+        factor,
+        levels = c(
+            "first.result", 
+            "last.result", 
+            "max.result", 
+            "time.wt.avg"
+        ),
+        labels = c(
+            "First",
+            "Last",
+            "Max",
+            "Average"
+        )
+    ) %>%
+    filter(value >= 0) %>%
+    group_by(key)
+    
+fit <- df %>%
+    mutate_at("last.datetime", as.numeric) %>%
+    do(augment(loess(value ~ last.datetime, .))) %>%
+    filter(last.datetime == max(last.datetime)) %>%
+    select(-last.datetime) %>%
+    left_join(
+        df %>%
+            select(key, last.datetime) %>%
+            filter(last.datetime == max(last.datetime)),
+        by = "key"
+    )
+
+df %>%
+    ggplot(aes(x = last.datetime, y = value)) +
+    geom_smooth(
+        aes(color = key),
+        method = "loess",
+        se = FALSE
+    ) +
+    geom_text_repel(
+        data = fit,
+        aes(label = key, x = last.datetime, y = .fitted), 
+        size = 3,
+        color = "grey35",
+        # nudge_y = 0.1,
+        na.rm = TRUE,
+        min.segment.length = 5
+    ) +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "1 month",
+        date_labels = "%b %y"
+    ) +
+    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
+    scale_y_continuous("Pain score", breaks = seq(0, 10, by = 1)) +
+    theme_bg()
+
 ```
+
+
 
 ```{r}
 data_demographics %>%
