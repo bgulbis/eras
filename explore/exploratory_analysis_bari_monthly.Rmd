@@ -18,6 +18,7 @@ library(lubridate)
 library(kableExtra)
 library(themebg)
 library(ggrepel)
+library(broom)
 # library(plotly)
 
 tz <- "US/Central"
@@ -49,7 +50,51 @@ data_patients <- data_patients %>%
 # pts_n <- spread(pt_num, surg_month, pts)
 ```
 
-```{r}
+```{r, fig.cap="Lengths of stay (LOS)"}
+data_patients %>%
+    select(
+        millennium.id, 
+        surg_month, 
+        or.hours = or_hours, 
+        pacu.hours = pacu_hours, 
+        postop.los = postop_los
+    ) %>%
+    left_join(
+        data_demographics[c("millennium.id", "length.stay")], 
+        by = "millennium.id"
+    ) %>%
+    ungroup() %>%
+    gather(key, value, or.hours:length.stay) %>%
+    mutate_at(
+        "key", 
+        factor, 
+        levels = c(
+            "length.stay", 
+            "postop.los", 
+            "pacu.hours", 
+            "or.hours"
+        ),
+        labels = c(
+            "Hospital LOS (days)",
+            "Post-op LOS (days)",
+            "PACU Duration (hours)",
+            "OR Duration (hours)"
+        )
+    ) %>%
+    ggplot(aes(x = surg_month, y = value)) +
+    geom_smooth(method = "loess", span = 1) +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "3 month",
+        date_labels = "%b %y"
+    ) +
+    ylab("Time") +
+    facet_wrap(~key) +
+    theme_bg()
+
+```
+
+```{r, eval=FALSE}
 df <- data_patients %>%
     select(
         millennium.id, 
@@ -154,7 +199,71 @@ data_patients %>%
 
 ```
 
-```{r}
+```{r, fig.cap="Length of stay by surgeon"}
+df <- data_patients %>%
+    select(
+        millennium.id, 
+        surg_month, 
+        surgeon,
+        admit.datetime
+    ) %>%
+    arrange(surgeon, admit.datetime) %>%
+    left_join(
+        data_demographics[c("millennium.id", "length.stay")], 
+        by = "millennium.id"
+    ) %>%
+    ungroup() %>%
+    filter(
+        surgeon %in% c(
+            "SnyderSr, Brad Elliot MD",
+            "Wilson, Erik Browning MD",
+            "Wilson, Todd David MD"
+        )
+    ) %>%
+    group_by(surgeon) 
+
+fit <- df %>%
+    mutate_at("admit.datetime", as.numeric) %>%
+    do(augment(loess(length.stay ~ admit.datetime, .))) %>%
+    filter(admit.datetime == max(admit.datetime)) %>%
+    select(-admit.datetime) %>%
+    left_join(
+        df %>%
+            select(surgeon, admit.datetime) %>%
+            filter(admit.datetime == max(admit.datetime)),
+        by = "surgeon"
+    )
+
+
+df %>%
+    ggplot(aes(x = admit.datetime, y = length.stay)) +
+    geom_smooth(
+        aes(color = surgeon),
+        method = "loess",
+        se = FALSE
+    ) +
+    geom_text_repel(
+        data = fit,
+        aes(label = surgeon, x = admit.datetime, y = .fitted), 
+        size = 3,
+        color = "grey35",
+        # nudge_y = 0.1,
+        na.rm = TRUE,
+        min.segment.length = 5
+    ) +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "1 month",
+        date_labels = "%b %y"
+    ) +
+    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
+    ylab("Length of stay (days)") +
+    theme_bg()
+
+```
+
+
+```{r, eval=FALSE}
 df <- data_patients %>%
     select(
         millennium.id, 
@@ -223,7 +332,68 @@ df %>%
 
 ```
 
-```{r}
+```{r, fig.cap="Length of stay by surgery"}
+
+df <- data_patients %>%
+    select(
+        millennium.id, 
+        surg_month, 
+        surgery,
+        admit.datetime
+    ) %>%
+    arrange(surgery, admit.datetime) %>%
+    left_join(
+        data_demographics[c("millennium.id", "length.stay")], 
+        by = "millennium.id"
+    ) %>%
+    ungroup() %>%
+    add_count(surgery) %>%
+    filter(
+        n > 1,
+        !is.na(surgery)
+    ) %>%
+    group_by(surgery) 
+
+fit <- df %>%
+    mutate_at("admit.datetime", as.numeric) %>%
+    do(augment(loess(length.stay ~ admit.datetime, .))) %>%
+    filter(admit.datetime == max(admit.datetime)) %>%
+    select(-admit.datetime) %>%
+    left_join(
+        df %>%
+            select(surgery, admit.datetime) %>%
+            filter(admit.datetime == max(admit.datetime)),
+        by = "surgery"
+    )
+
+df %>%
+    ggplot(aes(x = admit.datetime, y = length.stay)) +
+    geom_smooth(
+        aes(color = surgery),
+        method = "loess",
+        se = FALSE
+    ) +
+    geom_text_repel(
+        data = fit,
+        aes(label = surgery, x = admit.datetime, y = .fitted), 
+        size = 3,
+        color = "grey35",
+        # nudge_y = 0.1,
+        na.rm = TRUE,
+        min.segment.length = 5
+    ) +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "1 month",
+        date_labels = "%b %y"
+    ) +
+    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
+    ylab("Length of stay (days)") +
+    theme_bg()
+
+```
+
+```{r, eval=FALSE}
 df <- data_patients %>%
     select(
         millennium.id, 
