@@ -94,6 +94,36 @@ data_patients %>%
 
 ```
 
+```{r, fig.cap="Distribution of hospital length of stay by month"}
+p <- data_patients %>%
+    select(millennium.id, surg_month) %>%
+    left_join(
+        data_demographics[c("millennium.id", "length.stay")], 
+        by = "millennium.id"
+    ) %>%
+    ungroup() %>%
+    arrange(surg_month) %>%
+    mutate_at(
+        "surg_month",
+        format,
+        format = "%b %y"
+    ) %>%
+    ggplot(aes(x = surg_month, y = length.stay)) +
+    geom_boxplot() +
+    xlab(NULL) +
+    scale_y_continuous("Length of stay (days)") +
+    theme_bg()
+
+p
+```
+
+```{r, fig.cap="Distribution of hospital length of stay by month. This is the same data, but outliers above 8 days are not displayed."}
+p +
+    coord_cartesian(ylim = c(0, 8))
+```
+
+
+
 ```{r, eval=FALSE}
 df <- data_patients %>%
     select(
