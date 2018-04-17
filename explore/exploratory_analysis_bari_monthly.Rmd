@@ -157,20 +157,12 @@ df %>%
     )
 ```
 
-```{r, fig.cap="Percent of patients discharged on post-op day 1 by type of surgery performed"}
+```{r, fig.cap="Percent of patients discharged on post-op day 1 by type of surgery performed", fig.height=6}
 data_patients %>%
     group_by(surg_month) %>%
     add_count(surgery) %>%
     group_by(surg_month, surgery, n) %>%
     summarize_at("dc_day", funs(sum(. == 1, na.rm = TRUE))) %>%
-    group_by(surgery) %>%
-    mutate(           
-        label = if_else(
-            surg_month == max(surg_month),
-            surgery,
-            NA_character_
-        )
-    ) %>%
     ungroup() %>%
     mutate(pct.pod = dc_day / n * 100) %>%
     filter(
@@ -178,21 +170,18 @@ data_patients %>%
         !is.na(surgery)
     ) %>%
     ggplot(aes(x = surg_month, y = pct.pod)) +
-    geom_line(aes(color = surgery)) +
-    geom_text_repel(
-        aes(label = label), 
-        size = 3,
-        color = "grey35",
-        nudge_y = 3,
-        na.rm = TRUE,
-        min.segment.length = 5
+    geom_bar(
+        # aes(fill = surgery), 
+        stat = "identity", 
+        position = "dodge"
     ) +
     scale_x_datetime(
         NULL,
         date_breaks = "1 month",
         date_labels = "%b %y"
     ) +
-    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
+    scale_fill_brewer(NULL, palette = brew_pal) +
+    facet_wrap(~ surgery, ncol = 1) +
     xlab(NULL) +
     ylab("Patients (%)") +
     theme_bg()
