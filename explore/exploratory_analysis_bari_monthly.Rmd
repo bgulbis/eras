@@ -847,7 +847,7 @@ df_opiods %>%
 ```
 
 ```{r, fig.cap="Distribution of total IV morphine equivalents received per patient in all areas. Note, outliers above 2,000 MME are not displayed."}
-df %>%
+df_opiods %>%
     group_by(millennium.id, surg_month) %>%
     summarize_at("total.mme", sum, na.rm = TRUE) %>%
     ggplot(aes(x = surg_month, y = total.mme)) +
