@@ -50,7 +50,7 @@ data_patients <- data_patients %>%
 # pts_n <- spread(pt_num, surg_month, pts)
 ```
 
-```{r, fig.cap="Lengths of stay (LOS)"}
+```{r, fig.cap="Lengths of stay (LOS)", fig.height=8}
 data_patients %>%
     select(
         millennium.id, 
@@ -85,11 +85,11 @@ data_patients %>%
     geom_smooth(method = "loess", span = 1) +
     scale_x_datetime(
         NULL,
-        date_breaks = "3 month",
+        date_breaks = "1 month",
         date_labels = "%b %y"
     ) +
     ylab("Time") +
-    facet_wrap(~key) +
+    facet_wrap(~key, ncol = 1, scales = "free_y") +
     theme_bg()
 
 ```
@@ -263,10 +263,13 @@ df %>%
     ) +
     geom_text_repel(
         data = fit,
-        aes(label = surgeon, x = admit.datetime, y = .fitted), 
+        aes(
+            label = surgeon, 
+            x = admit.datetime, 
+            y = .fitted,
+            color = surgeon
+        ), 
         size = 3,
-        color = "grey35",
-        # nudge_y = 0.1,
         na.rm = TRUE,
         min.segment.length = 5
     ) +
@@ -277,7 +280,7 @@ df %>%
     ) +
     scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
     ylab("Length of stay (days)") +
-    theme_bg()
+    theme_bg() 
 
 ```
 
@@ -394,10 +397,14 @@ df %>%
     ) +
     geom_text_repel(
         data = fit,
-        aes(label = surgery, x = admit.datetime, y = .fitted), 
+        aes(
+            label = surgery, 
+            x = admit.datetime, 
+            y = .fitted, 
+            color = surgery
+        ), 
         size = 3,
-        color = "grey35",
-        # nudge_y = 0.1,
+        nudge_y = -0.1,
         na.rm = TRUE,
         min.segment.length = 5
     ) +
@@ -571,10 +578,13 @@ df %>%
     ) +
     geom_text_repel(
         data = fit,
-        aes(label = key, x = last.datetime, y = .fitted), 
+        aes(
+            label = key, 
+            x = last.datetime, 
+            y = .fitted,
+            color = key
+        ), 
         size = 3,
-        color = "grey35",
-        # nudge_y = 0.1,
         na.rm = TRUE,
         min.segment.length = 5
     ) +
@@ -644,10 +654,13 @@ df %>%
     ) +
     geom_text_repel(
         data = fit,
-        aes(label = key, x = last.datetime, y = .fitted), 
+        aes(
+            label = key, 
+            x = last.datetime, 
+            y = .fitted,
+            color = key
+        ), 
         size = 3,
-        color = "grey35",
-        # nudge_y = 0.1,
         na.rm = TRUE,
         min.segment.length = 5
     ) +
@@ -688,52 +701,58 @@ data_demographics %>%
     
 ```
 
-
-
 ```{r}
-hdr_location <- htmltools::withTags(table(
-    class = 'display',
-    thead(
-        tr(
-            th(rowspan = 2, valign="bottom", 'Location'),
-            th(rowspan = 2, valign="bottom", 'Route'),
-            th(colspan = 2, '2015'),
-            th(colspan = 2, '2016'),
-            th(colspan = 2, 'Jul-Sep 2017')
-        ),
-        tr(
-            lapply(rep(c('N', '%'), 3), th)
+df <- data_pain_meds %>%
+    ungroup() %>%
+    inner_join(
+        data_patients[c("millennium.id", "surg_month")], 
+        by = "millennium.id"
+    ) %>%
+    mutate_at(
+        "route", 
+        str_replace_all, 
+        pattern = c(
+            "IVPB" = "IV", 
+            "IVP" = "IV", 
+            "NG" = "PO"
         )
     )
-))
 
-count_total_doses <- include %>%
-    left_join(data_pain_meds, by = "pie.id") %>%
-    filter(!is.na(timing)) %>%
-    group_by(group) %>%
-    summarize_at("num_doses", sum, na.rm = TRUE) %>%
-    rename(total_doses = num_doses)
+total_doses <- df %>%
+    group_by(surg_month) %>%
+    summarize_at(
+        "num_doses", 
+        funs(total_doses = sum(., na.rm = TRUE))
+    )
 
-include %>%
-    left_join(data_pain_meds, by = "pie.id") %>%
-    filter(!is.na(timing)) %>%
-    mutate_at("route", str_replace_all, pattern = c("IVPB" = "IV", "IVP" = "IV", "NG" = "PO")) %>%
-    filter(group != "current") %>%
-    group_by(group, timing, route) %>%
+df %>%
+    group_by(surg_month, timing, route) %>%
     summarize_at("num_doses", sum, na.rm = TRUE) %>%
-    left_join(count_total_doses, by = "group") %>%
-    mutate(pct_doses = num_doses / total_doses) %>%
-    select(-total_doses) %>%
-    gather(test, value, num_doses, pct_doses) %>%
-    unite(group_test, group, test) %>%
-    spread(group_test, value) %>%
-    select(timing, route, pre_num_doses, pre_pct_doses, everything()) %>%
-    datatable(caption = "Location where pain medications are given",
-              rownames = FALSE,
-              container = hdr_location,
-              options = list(dom = "t")) %>%
-    formatPercentage(c("baseline_pct_doses", "pre_pct_doses", "recent_pct_doses"), 1)
+    left_join(total_doses, by = "surg_month") %>%
+    mutate(pct_doses = num_doses / total_doses * 100) %>%
+    ungroup() %>%
+    mutate_at(
+        "timing", 
+        str_replace_all, 
+        pattern = c(
+            "floor" = "Floor",
+            "^or" = "OR",
+            "pacu" = "PACU"
+        )
+    ) %>%
+    ggplot(aes(x = surg_month, y = pct_doses, fill = route)) +
+    geom_bar(stat = "identity", position = "stack") +
+    scale_x_datetime(
+        NULL,
+        date_breaks = "1 month",
+        date_labels = "%b %y"
+    ) +
+    ylab("Doses (%)") +
+    scale_fill_brewer(NULL, palette = brew_pal) +
+    facet_wrap(~ timing, ncol = 1) +
+    theme_bg()
 ```
+
 
 * Medications given in the OR were not documented in the EMR in 2015 or 2016
 
