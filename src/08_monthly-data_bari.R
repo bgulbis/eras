@@ -39,6 +39,12 @@ mbo_id <- concat_encounters(bari_pts$millennium.id)
 #   * Pain Scores
 #   * Visit Data
 
+meds <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt() %>%
+    mutate(orig.order.id = order.parent.id) %>%
+    mutate_at("orig.order.id", na_if, y = "0") %>%
+    mutate_at("orig.order.id", funs(coalesce(., order.id)))
+
 # run EDW queries:
 #   * Identifiers - by Millennium Encounter ID
 
@@ -283,8 +289,7 @@ lookup_meds <- med_lookup(
 ) %>%
     mutate_at("med.name", str_to_lower)
 
-meds_pain <- read_data(dir_raw, "meds-inpt", FALSE) %>%
-    as.meds_inpt() %>%
+meds_pain <- meds %>%
     filter(med %in% c(lookup_meds$med.name, "acetaminophen")) %>%
     inner_join(
         data_patients[c("millennium.id", "room_out", "arrive.datetime")],
@@ -303,8 +308,27 @@ meds_pain <- read_data(dir_raw, "meds-inpt", FALSE) %>%
         )
     )
 
+mbo_order_id <- concat_encounters(meds_pain$orig.order.id)
+
+# run MBO query:
+#   * Orders Meds - Details - by Order Id
+
+meds_orders <- read_data(dir_raw, "orders", FALSE) %>%
+    as.order_detail(extras = list("med.product" = "Mnemonic (Product)")) %>%
+    rename(
+        frequency = freq,
+        order.route = route
+    )
+
 data_pain_meds <- meds_pain %>%
     filter(time_surg < 24) %>%
+    left_join(
+        meds_orders,
+        by = c(
+            "millennium.id",
+            "orig.order.id" = "order.id"
+        )
+    ) %>%
     add_count(
         millennium.id,
         med,
@@ -316,8 +340,10 @@ data_pain_meds <- meds_pain %>%
     group_by(
         millennium.id,
         med,
+        med.product,
         med.dose.units,
         route,
+        frequency,
         timing,
         num_doses
     ) %>%
@@ -333,7 +359,8 @@ opiods <- med_lookup(
     mutate_at("med.name", str_to_lower)
 
 data_opiods <- data_pain_meds %>%
-    filter(med %in% opiods$med.name)
+    filter(med %in% opiods$med.name) %>%
+    calc_morph_eq()
 
 data_meds_cont <- read_data(dir_raw, "meds-inpt", FALSE) %>%
     as.meds_inpt() %>%
