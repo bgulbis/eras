@@ -127,7 +127,7 @@ data_patients %>%
     guides(fill = guide_legend(ncol = 1))
 ```
 
-```{r, fig.cap="Lengths of stay (LOS) in the hospital and post-op period, as well as duration of stay in the OR and PACU. The line shows the average and trend, while the points show the range of values.", fig.height=8}
+```{r, fig.cap="Length of stay (LOS) trends in the hospital and post-op period, as well as duration of stay in the OR and PACU. The line shows the average and trend, while the points show the range of values. Outliers above 8 days are not displayed.", fig.height=8}
 data_patients %>%
     select(
         millennium.id, 
@@ -268,7 +268,7 @@ df %>%
     )
 ```
 
-```{r, fig.cap="Length of stay by surgeon. Note, there was one major outlier with a LOS greater than 20 days in December.", fig.height=3.5}
+```{r, fig.cap="Length of stay trend by surgeon. Note, there was one major outlier with a LOS greater than 20 days in December.", fig.height=3.5}
 df <- data_patients %>%
     select(
         millennium.id, 
@@ -465,7 +465,7 @@ df %>%
 
 ```
 
-```{r, fig.cap="Length of stay by surgery performed", fig.height=3.5}
+```{r, fig.cap="Length of stay trend by surgery performed", fig.height=3.5}
 
 df <- data_patients %>%
     select(
