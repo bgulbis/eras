@@ -172,101 +172,6 @@ data_patients %>%
 
 ```
 
-```{r, fig.cap="Distribution of hospital length of stay by month", eval=FALSE}
-p <- data_patients %>%
-    select(millennium.id, surg_month) %>%
-    left_join(
-        data_demographics[c("millennium.id", "length.stay")], 
-        by = "millennium.id"
-    ) %>%
-    ungroup() %>%
-    arrange(surg_month) %>%
-    mutate_at(
-        "surg_month",
-        format,
-        format = "%b"
-    ) %>%
-    mutate_at(
-        "surg_month",
-        as_factor
-    ) %>%
-    ggplot(aes(x = surg_month, y = length.stay)) +
-    geom_boxplot() +
-    xlab(NULL) +
-    scale_y_continuous("Length of stay (days)") +
-    theme_bg()
-
-p
-```
-
-```{r, fig.cap="Distribution of hospital length of stay by month. This is the same data, but outliers above 8 days are not displayed.", eval=FALSE}
-p +
-    coord_cartesian(ylim = c(0, 8))
-```
-
-```{r, eval=FALSE}
-df <- data_patients %>%
-    select(
-        millennium.id, 
-        surg_month, 
-        or.hours = or_hours, 
-        pacu.hours = pacu_hours, 
-        postop.los = postop_los
-    ) %>%
-    left_join(
-        data_demographics[c("millennium.id", "length.stay")], 
-        by = "millennium.id"
-    ) %>%
-    ungroup()
-    
-data_cols <- c("or.hours", "pacu.hours", "postop.los", "length.stay")
-
-df %>%
-    add_count(surg_month) %>%
-    group_by(surg_month, n) %>%
-    summarize_at(data_cols, funs(mean, sd), na.rm = TRUE) %>%
-    bind_rows(
-        df %>%
-            add_count() %>%
-            group_by(n) %>%
-            summarize_at(data_cols, funs(mean, sd), na.rm = TRUE) 
-    ) %>%
-    ungroup() %>%
-    mutate_at("surg_month", format, format = "%b") %>%
-    mutate_at("surg_month", funs(coalesce(., "Combined"))) %>%
-    select(
-        surg_month,
-        n,
-        or.hours_mean,
-        or.hours_sd,
-        pacu.hours_mean,
-        pacu.hours_sd,
-        postop.los_mean,
-        postop.los_sd,
-        length.stay_mean,
-        length.stay_sd
-    ) %>%
-    knitr::kable(
-        digits = 1,
-        caption = "Durations",
-        # booktabs = TRUE,
-        col.names = c(
-            "Month",
-            "N",
-            rep(c("Mean", "SD"), 4)
-        )
-    ) %>%
-    add_header_above(
-        c(
-            " " = 2,
-            "OR" = 2,
-            "PACU" = 2,
-            "Post-Op LOS" = 2,
-            "Total LOS" = 2
-        )
-    )
-```
-
 ```{r, fig.cap="Length of stay trend by surgeon.", fig.height=3.5}
 df <- data_patients %>%
     select(
@@ -284,7 +189,7 @@ df <- data_patients %>%
     mutate_at(
         "surgeon",
         fct_lump,
-        n = 3
+        n = 4
     ) %>%
     group_by(surgeon) 
 
@@ -331,139 +236,6 @@ df %>%
 
 ```
 
-```{r, eval=FALSE}
-df <- data_patients %>%
-    select(
-        millennium.id, 
-        surg_month, 
-        surgeon,
-        admit.datetime
-    ) %>%
-    arrange(surgeon, admit.datetime) %>%
-    left_join(
-        data_demographics[c("millennium.id", "length.stay")], 
-        by = "millennium.id"
-    ) %>%
-    ungroup() %>%
-    mutate_at(
-        "surgeon",
-        fct_lump,
-        n = 3
-    ) %>%
-    group_by(surgeon) 
-
-fit <- df %>%
-    mutate_at("admit.datetime", as.numeric) %>%
-    do(augment(loess(length.stay ~ admit.datetime, .))) %>%
-    filter(admit.datetime == max(admit.datetime)) %>%
-    select(-admit.datetime) %>%
-    left_join(
-        df %>%
-            group_by(surgeon) %>%
-            summarize_at("surg_month", max),
-        by = "surgeon"
-    )
-
-df %>%
-    ggplot(aes(x = surg_month, y = length.stay)) +
-    geom_smooth(
-        aes(color = surgeon),
-        method = "loess",
-        se = FALSE
-    ) +
-    geom_text_repel(
-        data = fit,
-        aes(
-            label = surgeon, 
-            x = surg_month, 
-            y = .fitted,
-            color = surgeon
-        ), 
-        size = 3,
-        na.rm = TRUE,
-        min.segment.length = 5
-    ) +
-    scale_x_datetime(
-        NULL,
-        date_breaks = "1 month",
-        date_labels = "%b"
-    ) +
-    scale_color_brewer(NULL, palette = brew_pal, guide = "none") +
-    scale_y_continuous("Length of stay (days)", breaks = 0:8) +
-    coord_cartesian(ylim = c(0, 8)) +
-    theme_bg() 
-
-```
-
-```{r, eval=FALSE}
-df <- data_patients %>%
-    select(
-        millennium.id, 
-        surg_month, 
-        surgeon,
-        or.hours = or_hours, 
-        pacu.hours = pacu_hours, 
-        postop.los = postop_los
-    ) %>%
-    left_join(
-        data_demographics[c("millennium.id", "length.stay")], 
-        by = "millennium.id"
-    ) %>%
-    ungroup()
-    
-data_cols <- c("or.hours", "pacu.hours", "postop.los", "length.stay")
-
-df %>%
-    add_count(surgeon, surg_month) %>%
-    group_by(surgeon, surg_month, n) %>%
-    summarize_at(data_cols, funs(mean, sd), na.rm = TRUE) %>%
-    bind_rows(
-        df %>%
-            add_count(surg_month) %>%
-            group_by(surg_month, n) %>%
-            summarize_at(data_cols, funs(mean, sd), na.rm = TRUE) 
-    ) %>%
-    ungroup() %>%
-    mutate_at("surg_month", format, format = "%b") %>%
-    mutate_at("surgeon", funs(coalesce(., "Combined"))) %>%
-    select(
-        surgeon,
-        surg_month,
-        n,
-        or.hours_mean,
-        or.hours_sd,
-        pacu.hours_mean,
-        pacu.hours_sd,
-        postop.los_mean,
-        postop.los_sd,
-        length.stay_mean,
-        length.stay_sd
-    ) %>%
-    knitr::kable(
-        # format = "html",
-        digits = 1,
-        caption = "Length of stay by surgeon",
-        # booktabs = TRUE,
-        col.names = c(
-            "Surgeon",
-            "Month",
-            "N",
-            rep(c("Mean", "SD"), 4)
-        )
-    ) %>%
-    collapse_rows(1) %>%
-    add_header_above(
-        c(
-            " " = 3,
-            "OR" = 2,
-            "PACU" = 2,
-            "Post-Op LOS" = 2,
-            "Total LOS" = 2
-        )
-    ) 
-
-```
-
 ```{r, fig.cap="Length of stay trend by surgery performed", fig.height=3.5}
 
 df <- data_patients %>%
@@ -487,12 +259,12 @@ df <- data_patients %>%
     mutate_at(
         "surgery",
         fct_lump,
-        n = 3
+        n = 4
     ) %>%
-    # filter(
-    #     n > 1,
-    #     !is.na(surgery)
-    # ) %>%
+    filter(
+        n > 5,
+        !is.na(surgery)
+    ) %>%
     group_by(surgery) 
 
 fit <- df %>%
@@ -536,75 +308,6 @@ df %>%
     scale_y_continuous("Length of stay (days)", breaks = 0:10) +
     # coord_cartesian(ylim = c(0, 8)) +
     theme_bg()
-
-```
-
-```{r, eval=FALSE}
-df <- data_patients %>%
-    select(
-        millennium.id, 
-        surg_month, 
-        surgery,
-        or.hours = or_hours, 
-        pacu.hours = pacu_hours, 
-        postop.los = postop_los
-    ) %>%
-    left_join(
-        data_demographics[c("millennium.id", "length.stay")], 
-        by = "millennium.id"
-    ) %>%
-    ungroup()
-    
-data_cols <- c("or.hours", "pacu.hours", "postop.los", "length.stay")
-
-df %>%
-    add_count(surgery, surg_month) %>%
-    group_by(surgery, surg_month, n) %>%
-    summarize_at(data_cols, funs(mean, sd), na.rm = TRUE) %>%
-    bind_rows(
-        df %>%
-            add_count(surg_month) %>%
-            group_by(surg_month, n) %>%
-            summarize_at(data_cols, funs(mean, sd), na.rm = TRUE) 
-    ) %>%
-    ungroup() %>%
-    mutate_at("surg_month", format, format = "%b") %>%
-    mutate_at("surgery", funs(coalesce(., "Combined"))) %>%
-    select(
-        surgery,
-        surg_month,
-        n,
-        or.hours_mean,
-        or.hours_sd,
-        pacu.hours_mean,
-        pacu.hours_sd,
-        postop.los_mean,
-        postop.los_sd,
-        length.stay_mean,
-        length.stay_sd
-    ) %>%
-    knitr::kable(
-        # format = "html",
-        digits = 1,
-        caption = "Length of stay by surgery",
-        # booktabs = TRUE,
-        col.names = c(
-            "Surgery",
-            "Month",
-            "N",
-            rep(c("Mean", "SD"), 4)
-        )
-    ) %>%
-    collapse_rows(1) %>%
-    add_header_above(
-        c(
-            " " = 3,
-            "OR" = 2,
-            "PACU" = 2,
-            "Post-Op LOS" = 2,
-            "Total LOS" = 2
-        )
-    ) 
 
 ```
 
@@ -675,7 +378,7 @@ data_patients %>%
 
 ```
 
-```{r, fig.cap="Percent of patients discharged on post-op day 1 by type of surgery performed", fig.height=8}
+```{r, fig.cap="Percent of patients discharged on post-op day 1 by type of surgery performed", fig.height=8, eval=FALSE}
 data_patients %>%
     group_by(surg_month) %>%
     add_count(surgery) %>%
@@ -719,6 +422,7 @@ data_patients %>%
 df <- data_pain_scores_all %>%
     select(
         millennium.id, 
+        last.datetime,
         first.result:max.result, 
         time.wt.avg
     ) %>%
@@ -795,6 +499,7 @@ df %>%
 df <- data_pain_scores_prior %>%
     select(
         millennium.id, 
+        last.datetime,
         first.result:max.result, 
         time.wt.avg
     ) %>%
@@ -950,14 +655,14 @@ df_opiods <- data_opiods %>%
     )
 ```
 
-```{r, fig.cap="Distribution of total IV morphine equivalents received per patient on the floor during the first 24 hours post-op. Note, outliers above 300 MME are not displayed.", fig.height=3.5}
+```{r, fig.cap="Distribution of total IV morphine equivalents received per patient on the floor during the first 24 hours post-op.", fig.height=3.5}
 df_opiods %>%
     filter(timing == "Floor") %>%
     ggplot(aes(x = surg_month, y = total.mme)) +
     geom_boxplot() +
     xlab(NULL) +
     ylab("IV Morphine Equivalents") +
-    coord_cartesian(ylim = c(0, 300)) +
+    # coord_cartesian(ylim = c(0, 300)) +
     theme_bg()
 ```
 
@@ -968,74 +673,8 @@ df_opiods %>%
     geom_boxplot() +
     xlab(NULL) +
     ylab("IV Morphine Equivalents") +
-    coord_cartesian(ylim = c(0, 1500)) +
+    # coord_cartesian(ylim = c(0, 1500)) +
     theme_bg()
-```
-
-```{r, fig.cap="Distribution of total IV morphine equivalents received per patient in the PACU. Note, outliers above 120 MME are not displayed.", eval=FALSE}
-df_opiods %>%
-    filter(timing == "PACU") %>%
-    ggplot(aes(x = surg_month, y = total.mme)) +
-    geom_boxplot() +
-    xlab(NULL) +
-    ylab("IV Morphine Equivalents") +
-    coord_cartesian(ylim = c(0, 120)) +
-    theme_bg()
-```
-
-```{r, fig.cap="Distribution of total IV morphine equivalents received per patient in all areas during the first 24 hours post-op. Note, outliers above 2,000 MME are not displayed.", eval=FALSE}
-df_opiods %>%
-    group_by(millennium.id, surg_month) %>%
-    summarize_at("total.mme", sum, na.rm = TRUE) %>%
-    ggplot(aes(x = surg_month, y = total.mme)) +
-    geom_boxplot() +
-    xlab(NULL) +
-    ylab("IV Morphine Equivalents") +
-    coord_cartesian(ylim = c(0, 2000)) +
-    theme_bg()
-```
-
-```{r, eval=FALSE}
-# IV MME on floor, very few patients
-df_opiods <- data_opiods %>%
-    mutate(total.mme = mme.iv * num_doses) %>%
-    left_join(data_patients, by = "millennium.id") %>%
-    ungroup() %>%
-    mutate_at(
-        "route",
-        str_replace_all, 
-        pattern = c(
-            "IVPB" = "IV", 
-            "IVP" = "IV", 
-            "NG" = "PO"
-        )
-    ) %>%
-    group_by(millennium.id, surg_month, timing, route) %>%
-    summarize_at("total.mme", sum, na.rm = TRUE) %>%
-    filter(
-        route == "IV",
-        timing == "floor",
-    ) %>%
-    ungroup() %>%
-    arrange(surg_month) %>%
-    mutate_at(
-        "surg_month",
-        format,
-        format = "%b"
-    ) %>%
-    mutate_at(
-        "surg_month",
-        as_factor
-    ) %>%
-    mutate_at(
-        "timing",
-        str_replace_all,
-        pattern = c(
-            "floor" = "Floor",
-            "^or" = "OR",
-            "pacu" = "PACU"
-        )
-    )
 ```
 
 ```{r, fig.cap="Percent of patients receiving a PCA", fig.height=3.5}
