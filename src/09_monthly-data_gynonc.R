@@ -68,7 +68,7 @@ gynonc_person <- concat_encounters(gynonc_id$person.id)
 # remove those that aren't preadmit
 gynonc_visit <- read_data(dir_raw, "^visit", FALSE) %>%
     as.visits() %>%
-    filter(admit.type == "Preadmit Not OB") %>%
+    # filter(admit.type == "Preadmit Not OB") %>%
     left_join(
         gynonc_id[c("millennium.id", "pie.id")],
         by = "millennium.id"
@@ -85,7 +85,8 @@ gynonc_surgeon <- read_data(dir_raw, "surgeon") %>%
     filter(
         surgeon %in% c(
             "Nugent, Elizabeth Kathleen MD",
-            "LucciIII, Joseph Anthony MD"
+            "LucciIII, Joseph Anthony MD",
+            "Diaz-Arrastia, Concepcion Ravelo MD"
         )
     )
 
@@ -115,12 +116,8 @@ gynonc_surg_times <- read_data(dir_raw, "surgery-times") %>%
         by = c("pie.id", "surgery_start" = "surg.start.datetime")
     ) %>%
     filter(
-        !(
-            surgery %in% c(
-                "Laparoscopy Diagnostic",
-                "Hernia Hiatal Repair Laparoscopic"
-            )
-        )
+        str_detect(surgery, "Hysterectomy|Oophorectomy") |
+            surgery == "Laparotomy Exploratory"
     ) %>%
     add_count(pie.id) %>%
     distinct(pie.id, surgery_start, .keep_all = TRUE)
@@ -143,7 +140,7 @@ gynonc_floor <- gynonc_locations %>%
     ) %>%
     arrange(arrive.datetime, .by_group = TRUE) %>%
     distinct(millennium.id, .keep_all = TRUE) %>%
-    filter(location %in% c("HH 9EJP", "HH 9WJP")) %>%
+    filter(location == "HH 3JP") %>%
     mutate(
         pacu_hours = difftime(
             arrive.datetime,
@@ -505,7 +502,10 @@ data_pca <- pain_pca %>%
 
 meds_home <- read_data(dir_raw, "meds-home", FALSE) %>%
     as.meds_home() %>%
-    filter(med %in% lookup_meds$med.name) %>%
+    filter(
+        med %in% lookup_meds$med.name,
+        med.type == "Recorded / Home Meds"
+    ) %>%
     distinct(millennium.id) %>%
     mutate(home_pain_med = TRUE)
 
@@ -575,7 +575,7 @@ data_nv_meds <- meds_nausea %>%
 # emesis
 # number prn
 
-dir_save <- paste0("data/tidy/report/", begin_abbrev, "_", end_abbrev)
+dir_save <- paste0("data/tidy/gynonc/", begin_abbrev, "_", end_abbrev)
 
 if (!dir.exists(dir_save)) dir.create(dir_save)
 
